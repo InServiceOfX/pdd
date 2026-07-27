@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .architecture_registry import extract_modules
-from .intent import IntentPlan
+from .intent import IntentPlan, detected_technology_terms
 
 INTENT_APPLY_SCHEMA_VERSION = "pdd.intent.apply.v1"
 _INTENT_KINDS = {"add", "clarify", "correct", "remove", "replace"}
@@ -106,12 +106,21 @@ def _bullets(values: Iterable[str]) -> str:
     return "\n".join(f"- {item}" for item in items) if items else "- None stated."
 
 
+def _technology_decision(plan: IntentPlan, technology: Optional[str]) -> str:
+    """Return the accepted technology, preferring the agent's explicit choice."""
+    if technology and technology.strip():
+        return technology.strip()
+    stated = detected_technology_terms(plan.original_request)
+    return ", ".join(stated) if stated else "not stated"
+
+
 def _event_markdown(
     plan: IntentPlan,
     *,
     intent_kind: str,
     supersedes: Optional[str],
     approved_intent_id: str,
+    technology: Optional[str] = None,
 ) -> str:
     supersedes_line = (
         f"- Supersedes: `{supersedes}`\n" if supersedes else "- Supersedes: none\n"
@@ -131,6 +140,7 @@ def _event_markdown(
         f"- Request SHA-256: `{plan.original_request_sha256}`\n"
         f"- Project scope: `{plan.scope_kind}`\n"
         f"- Adoption scenario: `{plan.adoption_scenario}`\n\n"
+        f"- Technology: `{_technology_decision(plan, technology)}`\n\n"
         "## Original Request\n\n"
         f"{_blockquote(plan.original_request)}\n\n"
         "## Must Stay Unchanged\n\n"
@@ -160,6 +170,7 @@ def _product_intent_entry(
     event_relative: str,
     intent_kind: str,
     supersedes: Optional[str],
+    technology: Optional[str] = None,
 ) -> str:
     supersedes_line = (
         f"- Supersedes: `{supersedes}`\n" if supersedes else "- Supersedes: none\n"
@@ -170,7 +181,8 @@ def _product_intent_entry(
         f"- Intent event: [`{event_relative}`]({event_relative.removeprefix('docs/')})\n"
         f"- Change kind: `{intent_kind}`\n"
         f"{supersedes_line}"
-        f"- Scope: `{plan.adoption_scenario}`\n\n"
+        f"- Scope: `{plan.adoption_scenario}`\n"
+        f"- Technology: `{_technology_decision(plan, technology)}`\n\n"
         f"{_blockquote(plan.original_request)}\n"
         f"<!-- pdd-intent-entry:{plan.intent_id}:end -->\n"
     )
@@ -183,6 +195,7 @@ def _ensure_durable_intent(
     intent_kind: str,
     supersedes: Optional[str],
     approved_intent_id: str,
+    technology: Optional[str] = None,
 ) -> Tuple[Path, Path, List[str]]:
     event_path = root / "docs" / "intents" / f"intent__{plan.intent_id}.md"
     product_intent_path = root / "docs" / "PRODUCT_INTENT.md"
@@ -191,6 +204,7 @@ def _ensure_durable_intent(
         intent_kind=intent_kind,
         supersedes=supersedes,
         approved_intent_id=approved_intent_id,
+        technology=technology,
     )
     changed: List[str] = []
 
@@ -226,6 +240,7 @@ def _ensure_durable_intent(
             _relative(event_path, root),
             intent_kind,
             supersedes,
+            technology,
         )
         _atomic_write_text(product_intent_path, product_text)
         changed.append(_relative(product_intent_path, root))
@@ -522,6 +537,7 @@ def apply_intent(
     intent_kind: str = "add",
     supersedes: Optional[str] = None,
     characterized: bool = False,
+    technology: Optional[str] = None,
     create_story: bool = True,
     run_sync: bool = True,
     approved_story_sha256: Optional[str] = None,
@@ -555,6 +571,16 @@ def apply_intent(
         raise ValueError(
             "Brownfield apply requires characterization evidence; run the existing "
             "behavior and critical negative tests, then pass --characterized."
+        )
+    if (
+        plan.project_kind == "greenfield"
+        and not (technology and technology.strip())
+        and not detected_technology_terms(plan.original_request)
+    ):
+        raise ValueError(
+            "Greenfield apply requires a technology decision; the architecture "
+            "workflow cannot select a language or runtime on its own. State it in "
+            "the request or pass --technology."
         )
 
     root = Path(plan.project_root).resolve()
@@ -617,6 +643,7 @@ def apply_intent(
             intent_kind=intent_kind,
             supersedes=supersedes,
             approved_intent_id=approved_intent_id,
+            technology=technology,
         )
         changed_files.extend(durable_changed)
         durable_outcome = _WorkflowOutcome(

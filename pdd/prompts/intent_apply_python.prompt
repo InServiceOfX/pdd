@@ -25,7 +25,7 @@
     "functions": [
       {
         "name": "apply_intent",
-        "signature": "(plan: IntentPlan, *, approved_intent_id: str, intent_kind: str = 'add', supersedes: Optional[str] = None, characterized: bool = False, create_story: bool = True, run_sync: bool = True, approved_story_sha256: Optional[str] = None, quiet: bool = False, verbose: bool = False) -> IntentApplyResult",
+        "signature": "(plan: IntentPlan, *, approved_intent_id: str, intent_kind: str = 'add', supersedes: Optional[str] = None, characterized: bool = False, technology: Optional[str] = None, create_story: bool = True, run_sync: bool = True, approved_story_sha256: Optional[str] = None, quiet: bool = False, verbose: bool = False) -> IntentApplyResult",
         "returns": "IntentApplyResult"
       },
       {
@@ -73,6 +73,12 @@ MUST NOT require or access a GitHub issue.
 
 R2 - Brownfield safety gate
 A `conventional_brownfield` plan MUST reject unless `characterized=True`.
+A `greenfield` plan MUST reject before any model call, file write, or status
+record unless the request names a technology or `technology` is supplied. The
+architecture workflow cannot select a language or runtime on its own, so
+refusing deterministically is cheaper than paying to be told the PRD is
+insufficient. The accepted technology MUST be recorded in the durable intent
+event and the Product Intent entry so the generated PRD states it.
 This flag is an agent assertion that existing public behavior and critical
 negative boundaries have executable characterization evidence. The CLI help
 MUST make clear that the flag is not a substitute for running those checks.

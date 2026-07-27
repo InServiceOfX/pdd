@@ -61,7 +61,7 @@ def test_json_output_is_machine_readable_and_has_no_status_prose(
         [
             "plan",
             "--text",
-            "Create a calculator.",
+            "Create a Python calculator.",
             "--project-root",
             str(tmp_path),
             "--json",
@@ -201,7 +201,7 @@ def test_apply_requires_exact_plan_approval_without_writes(tmp_path: Path) -> No
         [
             "apply",
             "--text",
-            "Create a calculator.",
+            "Create a Python calculator.",
             "--project-root",
             str(tmp_path),
             "--approve",
@@ -237,7 +237,7 @@ def test_apply_json_is_machine_readable(monkeypatch, tmp_path: Path) -> None:
         )
 
     monkeypatch.setattr("pdd.commands.intent.apply_intent", fake_apply)
-    request = "Create a calculator."
+    request = "Create a Python calculator."
     from pdd.intent import build_intent_plan
 
     intent_id = build_intent_plan(request, tmp_path).intent_id
@@ -266,7 +266,7 @@ def test_apply_json_is_machine_readable(monkeypatch, tmp_path: Path) -> None:
 
 def test_failed_apply_emits_report_and_exits_nonzero(monkeypatch, tmp_path: Path) -> None:
     runner = CliRunner()
-    request = "Create a calculator."
+    request = "Create a Python calculator."
     from pdd.intent import build_intent_plan
 
     intent_id = build_intent_plan(request, tmp_path).intent_id
@@ -308,7 +308,7 @@ def test_story_approval_gate_exits_two_with_structured_hash(
     monkeypatch, tmp_path: Path
 ) -> None:
     runner = CliRunner()
-    request = "Create a calculator."
+    request = "Create a Python calculator."
     from pdd.intent import build_intent_plan
 
     intent_id = build_intent_plan(request, tmp_path).intent_id

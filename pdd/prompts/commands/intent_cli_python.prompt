@@ -76,8 +76,9 @@ R6 - Apply approval and agent options
 from the exact supplied request/root/title/source before calling
 `apply_intent`. Support agent-facing `--kind
 [add|clarify|correct|remove|replace]`, `--supersedes <intent-id>`,
-`--characterized`, `--no-story`, and `--no-sync`. The brownfield help MUST say
-that `--characterized` asserts tests were actually run. These are mechanical
+`--characterized`, `--technology`, `--no-story`, and `--no-sync`. The brownfield help MUST say
+that `--characterized` asserts tests were actually run. The `--technology` help
+MUST say it states the accepted language or stack for greenfield work. These are mechanical
 agent options, not questions the product human must answer.
 Support `--approve-story <sha256>` for the second approval gate. The agent MUST
 present the generated story's meaning before passing that hash.

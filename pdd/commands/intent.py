@@ -143,6 +143,14 @@ def plan_intent(
     ),
 )
 @click.option(
+    "--technology",
+    default=None,
+    help=(
+        "Accepted language, runtime, or stack for greenfield work. Required when "
+        "the request names none, because generation cannot choose one itself."
+    ),
+)
+@click.option(
     "--approve-story",
     "approved_story_sha256",
     default=None,
@@ -162,6 +170,7 @@ def apply_intent_command(
     intent_kind: str,
     supersedes: Optional[str],
     characterized: bool,
+    technology: Optional[str],
     approved_story_sha256: Optional[str],
     no_story: bool,
     no_sync: bool,
@@ -183,6 +192,7 @@ def apply_intent_command(
             intent_kind=intent_kind,
             supersedes=supersedes,
             characterized=characterized,
+            technology=technology,
             create_story=not no_story,
             run_sync=not no_sync,
             approved_story_sha256=approved_story_sha256,
