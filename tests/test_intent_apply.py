@@ -35,7 +35,7 @@ def _successful_architecture(
 
 
 def test_exact_approval_is_required_before_any_write(tmp_path: Path) -> None:
-    plan = build_intent_plan("Create a calculator.", tmp_path)
+    plan = build_intent_plan("Create a Python calculator.", tmp_path)
 
     with pytest.raises(ValueError, match="Approval ID does not match"):
         apply_intent(
@@ -67,7 +67,7 @@ def test_brownfield_requires_characterization_assertion(tmp_path: Path) -> None:
 
 def test_greenfield_apply_records_intent_and_status(tmp_path: Path) -> None:
     proposed = tmp_path / "new_project"
-    plan = build_intent_plan("Create a calculator.", proposed)
+    plan = build_intent_plan("Create a Python calculator.", proposed)
 
     result = apply_intent(
         plan,
@@ -96,7 +96,7 @@ def test_greenfield_apply_records_intent_and_status(tmp_path: Path) -> None:
 
 
 def test_successful_reapply_is_idempotent(tmp_path: Path) -> None:
-    plan = build_intent_plan("Create a calculator.", tmp_path)
+    plan = build_intent_plan("Create a Python calculator.", tmp_path)
     calls = 0
 
     def architecture_runner(*args) -> _WorkflowOutcome:
@@ -145,7 +145,7 @@ def test_existing_pdd_with_architecture_uses_incremental_route(tmp_path: Path) -
         ),
         encoding="utf-8",
     )
-    plan = build_intent_plan("Improve the calculator.", tmp_path)
+    plan = build_intent_plan("Improve the Python calculator.", tmp_path)
 
     result = apply_intent(
         plan,
@@ -161,7 +161,7 @@ def test_existing_pdd_with_architecture_uses_incremental_route(tmp_path: Path) -
 
 @pytest.mark.parametrize("kind", ["correct", "remove", "replace"])
 def test_superseding_kinds_require_existing_event(tmp_path: Path, kind: str) -> None:
-    plan = build_intent_plan("Change calculator rounding.", tmp_path)
+    plan = build_intent_plan("Change Python calculator rounding.", tmp_path)
 
     with pytest.raises(ValueError, match="requires --supersedes"):
         apply_intent(
@@ -186,7 +186,7 @@ def test_superseding_kinds_require_existing_event(tmp_path: Path, kind: str) -> 
 
 
 def test_correction_can_reference_prior_local_event(tmp_path: Path) -> None:
-    original = build_intent_plan("Create a calculator.", tmp_path)
+    original = build_intent_plan("Create a Python calculator.", tmp_path)
     original_result = apply_intent(
         original,
         approved_intent_id=original.intent_id,
@@ -195,7 +195,7 @@ def test_correction_can_reference_prior_local_event(tmp_path: Path) -> None:
         _architecture_runner=_successful_architecture,
     )
     assert original_result.success
-    correction = build_intent_plan("Use banker's rounding instead.", tmp_path)
+    correction = build_intent_plan("Use banker's rounding in Python instead.", tmp_path)
 
     result = apply_intent(
         correction,
@@ -218,7 +218,7 @@ def test_correction_can_reference_prior_local_event(tmp_path: Path) -> None:
 
 
 def test_architecture_failure_is_recorded_without_false_success(tmp_path: Path) -> None:
-    plan = build_intent_plan("Create a calculator.", tmp_path)
+    plan = build_intent_plan("Create a Python calculator.", tmp_path)
 
     result = apply_intent(
         plan,
@@ -246,7 +246,7 @@ def test_recommended_story_regression_and_sync_use_existing_commands(
     tmp_path: Path,
 ) -> None:
     request = (
-        "Create a calculator. Never send operands over the network. "
+        "Create a Python calculator. Never send operands over the network. "
         "For example, two plus two returns four."
     )
     plan = build_intent_plan(request, tmp_path)
@@ -302,7 +302,7 @@ def test_recommended_story_regression_and_sync_use_existing_commands(
 
 
 def test_structured_result_is_stable(tmp_path: Path) -> None:
-    plan = build_intent_plan("Create a calculator.", tmp_path)
+    plan = build_intent_plan("Create a Python calculator.", tmp_path)
     result = apply_intent(
         plan,
         approved_intent_id=plan.intent_id,
@@ -322,7 +322,7 @@ def test_structured_result_is_stable(tmp_path: Path) -> None:
 def test_full_architecture_runner_disables_github_state(
     monkeypatch, tmp_path: Path
 ) -> None:
-    plan = build_intent_plan("Create a calculator.", tmp_path)
+    plan = build_intent_plan("Create a Python calculator.", tmp_path)
     product_intent = tmp_path / "docs" / "PRODUCT_INTENT.md"
     product_intent.parent.mkdir(parents=True)
     product_intent.write_text("# Product Intent\n", encoding="utf-8")
@@ -370,7 +370,7 @@ def test_incremental_runner_uses_local_product_intent(
     product_intent = tmp_path / "docs" / "PRODUCT_INTENT.md"
     product_intent.parent.mkdir(parents=True)
     product_intent.write_text("# Product Intent\n", encoding="utf-8")
-    plan = build_intent_plan("Improve the calculator.", tmp_path)
+    plan = build_intent_plan("Improve the Python calculator.", tmp_path)
     captured = {}
 
     def fake_incremental(source, **kwargs):
@@ -416,7 +416,7 @@ def test_child_command_runner_reports_files_changed_by_sync(
 
 def test_external_source_path_is_not_persisted_verbatim(tmp_path: Path) -> None:
     source = tmp_path / "private-request.md"
-    source.write_text("Create a calculator.", encoding="utf-8")
+    source.write_text("Create a Python calculator.", encoding="utf-8")
     project = tmp_path / "project"
     plan = build_intent_plan(
         source.read_text(encoding="utf-8"),
@@ -439,3 +439,82 @@ def test_external_source_path_is_not_persisted_verbatim(tmp_path: Path) -> None:
     ).read_text(encoding="utf-8")
     assert str(source.resolve()) not in event
     assert "external-local-file:private-request.md" in event
+
+
+def test_greenfield_without_a_technology_refuses_before_spending(
+    tmp_path: Path,
+) -> None:
+    """Generation cannot pick a stack, so refuse rather than pay to be told."""
+    plan = build_intent_plan("Create a calculator.", tmp_path)
+    invoked: list[str] = []
+
+    def _must_not_run(*args, **kwargs):
+        invoked.append("architecture")
+        raise AssertionError("architecture runner must not be reached")
+
+    with pytest.raises(ValueError, match="requires a technology decision"):
+        apply_intent(
+            plan,
+            approved_intent_id=plan.intent_id,
+            _architecture_runner=_must_not_run,
+        )
+
+    assert invoked == []
+    assert not (tmp_path / "docs").exists()
+    assert not (tmp_path / ".pdd").exists()
+
+
+def test_asserted_technology_satisfies_the_greenfield_guard(tmp_path: Path) -> None:
+    plan = build_intent_plan("Create a calculator.", tmp_path)
+
+    result = apply_intent(
+        plan,
+        approved_intent_id=plan.intent_id,
+        technology="Rust with cargo",
+        create_story=False,
+        run_sync=False,
+        _architecture_runner=_successful_architecture,
+    )
+
+    assert result.success is True
+    event = (
+        tmp_path / "docs" / "intents" / f"intent__{plan.intent_id}.md"
+    ).read_text(encoding="utf-8")
+    assert "- Technology: `Rust with cargo`" in event
+    product = (tmp_path / "docs" / "PRODUCT_INTENT.md").read_text(encoding="utf-8")
+    assert "- Technology: `Rust with cargo`" in product
+
+
+def test_technology_stated_in_the_request_needs_no_flag(tmp_path: Path) -> None:
+    plan = build_intent_plan("Create a calculator in Python.", tmp_path)
+
+    result = apply_intent(
+        plan,
+        approved_intent_id=plan.intent_id,
+        create_story=False,
+        run_sync=False,
+        _architecture_runner=_successful_architecture,
+    )
+
+    assert result.success is True
+    event = (
+        tmp_path / "docs" / "intents" / f"intent__{plan.intent_id}.md"
+    ).read_text(encoding="utf-8")
+    assert "- Technology: `python`" in event
+
+
+def test_brownfield_is_unaffected_by_the_technology_guard(tmp_path: Path) -> None:
+    """An existing codebase already has a stack; do not demand one."""
+    (tmp_path / "app.py").write_text("print('x')\n", encoding="utf-8")
+    plan = build_intent_plan("Add CSV export.", tmp_path)
+
+    result = apply_intent(
+        plan,
+        approved_intent_id=plan.intent_id,
+        characterized=True,
+        create_story=False,
+        run_sync=False,
+        _architecture_runner=_successful_architecture,
+    )
+
+    assert result.success is True

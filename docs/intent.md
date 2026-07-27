@@ -93,6 +93,21 @@ public behavior and critical negative boundaries with executable tests. It
 then supplies `--characterized`. The flag is an assertion that the work was
 performed, not a replacement for the tests.
 
+Greenfield work needs a technology decision before generation. The architecture
+workflow cannot choose a language or runtime for itself, so `pdd intent apply`
+refuses deterministically when the request names none:
+
+```bash
+pdd intent apply --text "Convert sensor CSV files to a JSON summary." \
+  --approve INTENT_ID_FROM_PLAN \
+  --technology "Python 3.12, standard library only"
+```
+
+The refusal costs nothing, whereas letting the request through spends a model
+call to be told the PRD is insufficient. Naming the technology in the request
+itself satisfies the same requirement. The accepted decision is recorded in the
+intent event and the Product Intent entry so the generated PRD states it.
+
 Corrections and removals are explicit events rather than silent history
 rewrites:
 
