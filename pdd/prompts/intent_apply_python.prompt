@@ -1,0 +1,137 @@
+<pdd-reason>Applies an exactly approved local intent plan by preserving durable intent, updating or creating the prompt graph, selectively adding story coverage, and synchronizing the scoped project without requiring GitHub.</pdd-reason>
+
+<pdd-interface>
+{
+  "type": "module",
+  "module": {
+    "dataclasses": [
+      {
+        "name": "IntentApplyResult",
+        "fields": [
+          {"name": "schema_version", "type": "str"},
+          {"name": "success", "type": "bool"},
+          {"name": "intent_id", "type": "str"},
+          {"name": "route", "type": "str"},
+          {"name": "status", "type": "str"},
+          {"name": "changed_files", "type": "Tuple[str, ...]"},
+          {"name": "steps", "type": "Tuple[Dict[str, Any], ...]"},
+          {"name": "message", "type": "str"},
+          {"name": "cost", "type": "float"},
+          {"name": "model", "type": "str"},
+          {"name": "approval_required", "type": "Optional[Dict[str, str]]"}
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "apply_intent",
+        "signature": "(plan: IntentPlan, *, approved_intent_id: str, intent_kind: str = 'add', supersedes: Optional[str] = None, characterized: bool = False, create_story: bool = True, run_sync: bool = True, approved_story_sha256: Optional[str] = None, quiet: bool = False, verbose: bool = False) -> IntentApplyResult",
+        "returns": "IntentApplyResult"
+      },
+      {
+        "name": "intent_apply_result_to_dict",
+        "signature": "(result: IntentApplyResult) -> Dict[str, Any]",
+        "returns": "Dict[str, Any]"
+      },
+      {
+        "name": "render_apply_result",
+        "signature": "(result: IntentApplyResult) -> str",
+        "returns": "str"
+      }
+    ]
+  }
+}
+</pdd-interface>
+
+<pdd-dependency>intent_python.prompt</pdd-dependency>
+<pdd-dependency>agentic_architecture_python.prompt</pdd-dependency>
+
+% You are an expert Python engineer. Write `pdd/intent_apply.py`.
+
+<include>context/python_preamble.prompt</include>
+
+% Role & Scope
+  Implement the guarded mutation layer behind `pdd intent apply`. Reuse PDD's
+  existing local architecture, prompt, story, test, and sync workflows. Do not
+  create a second generator. The product/domain human approves meaning through
+  the review card; an AI agent supplies technical flags and owns mechanics.
+
+<vocabulary>
+- Applied event: an intent whose `.pdd/intents/<intent-id>.json` has `status` equal to `applied` and whose stored request SHA-256, kind, and supersedes value match the current invocation.
+- Correct: the literal `intent_kind` enum value identifying a new event that supersedes a prior local event because its accepted meaning was wrong.
+- Usable architecture: an `architecture.json` that parses as JSON and for which `extract_modules` returns at least one module.
+- Completed prerequisite: a child workflow returned success or exited with code zero.
+</vocabulary>
+
+<contract_rules>
+R1 - Exact approval and scope
+`apply_intent` MUST reject unless `approved_intent_id` exactly equals the
+deterministic `IntentPlan.intent_id`. It MUST operate only inside
+`plan.project_root`, creating that exact directory only for an approved
+greenfield plan. It MUST reject a project root that is an existing file. It
+MUST NOT require or access a GitHub issue.
+
+R2 - Brownfield safety gate
+A `conventional_brownfield` plan MUST reject unless `characterized=True`.
+This flag is an agent assertion that existing public behavior and critical
+negative boundaries have executable characterization evidence. The CLI help
+MUST make clear that the flag is not a substitute for running those checks.
+
+R3 - Durable, idempotent intent record
+Before prompt generation, write a versioned event at
+`docs/intents/intent__<intent-id>.md` and add it once to
+`docs/PRODUCT_INTENT.md`. Preserve the exact original request, SHA-256,
+source, explicit constraints/examples, intent kind, optional superseded ID,
+scope, and approval ID. Reapplying an Applied event MUST
+return success without duplicating the Product Intent entry or rerunning
+mutation. A conflicting existing event MUST fail. Intent kinds are `add`,
+`clarify`, `correct`, `remove`, or `replace`; a correction/removal/replacement
+with `supersedes` MUST verify the referenced local event exists.
+
+R4 - Route through existing PDD workflows
+For an existing PDD project with a Usable architecture, the system MUST invoke
+the local incremental Product-Intent/PRD propagation workflow using
+`docs/PRODUCT_INTENT.md`. For greenfield, characterized brownfield, or an
+existing-PDD project without a usable architecture, the system MUST invoke the
+existing full agentic architecture orchestrator locally with GitHub state
+disabled and a deterministic local workflow identity. It MUST NOT silently
+fall back from a failed incremental run to full regeneration.
+
+R5 - Selective story and regression
+When the plan recommends a story and `create_story=True`, link it to prompt
+files changed by architecture propagation, falling back to conservatively
+discovered plan candidates. The system MUST invoke the existing
+`pdd story add` command. Before regression generation, it MUST hash the exact
+story file and compare it with `approved_story_sha256`. A missing or different
+hash MUST return `status="awaiting_story_approval"`, explicit
+`approval_required` path/hash fields, and MUST NOT run regression generation or
+sync. Only a matching hash MAY invoke `pdd test --from-story`. If no prompt can
+be linked, it MUST fail rather than inventing a mapping. When story coverage is
+not recommended or is disabled, it MUST record an explicit skipped step.
+
+R6 - Scoped synchronization
+After each prompt/architecture and story prerequisite is Completed, run project-wide
+dependency-ordered `pdd --force sync --evidence --no-steer` from the exact
+project root unless `run_sync=False`. Global sync is scoped by its working
+directory and synchronizes drifted modules rather than every workspace sibling.
+A nonzero child command exit MUST make apply fail and MUST preserve its bounded
+stdout/stderr for diagnosis.
+
+R7 - Honest status and failure record
+Maintain machine-readable status alongside the Markdown event at
+`.pdd/intents/<intent-id>.json`. Status MUST progress through `applying` to
+`applied` or `failed`, include completed step results, changed paths, total
+cost/model when reported, and an actionable message. A failure after intent
+capture MUST remain recorded; never claim rollback of independent downstream
+tools. Writes MUST use atomic replacement for individual intent/status files.
+
+R8 - Stable output
+Return `IntentApplyResult` and serialize it as
+`pdd.intent.apply.v1`. Human rendering MUST distinguish success, failure,
+skipped steps, changed files, cost/model, and evidence. Do not include
+unbounded child output or secrets.
+</contract_rules>
+
+% Deliverables
+- Code: `pdd/intent_apply.py`
+- Tests: `tests/test_intent_apply.py`

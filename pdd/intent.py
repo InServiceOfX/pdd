@@ -809,6 +809,7 @@ def intent_plan_to_dict(plan: IntentPlan) -> Dict[str, Any]:
         "capabilities": {
             "planning": True,
             "apply": False,
+            "apply_command_available": True,
             "writes_project_files": False,
             "requires_github": False,
             "invokes_llm": False,

@@ -197,7 +197,7 @@ This opens a browser-based interface where you can:
 - **Browse Files**: View and edit prompts, code, and tests in your project
 - **Remote Access**: Access your session from any browser via PDD Cloud (use `--local-only` to disable)
 
-### Option 2: Local intent planning
+### Option 2: Local intent planning and application
 
 Plan an ordinary-language request against local repository evidence without a
 GitHub issue, model call, or project-file changes:
@@ -206,9 +206,21 @@ GitHub issue, model call, or project-file changes:
 pdd intent plan --text "Add offline report export. Never upload the report."
 ```
 
-Use `--json` when an AI harness will consume the plan. This first release is
-planning-only; see [docs/intent.md](docs/intent.md) for its exact capabilities
-and the agent-assisted workflow it is designed to support.
+Use `--json` when an AI harness will consume the plan. After the human approves
+the review card, the agent can apply that exact plan locally without a GitHub
+issue:
+
+```bash
+pdd intent apply \
+  --text "Add offline report export. Never upload the report." \
+  --approve INTENT_ID_FROM_PLAN
+```
+
+Apply persists Product Intent, updates or creates the prompt graph, adds
+selective story/regression coverage with an exact story-approval gate, and runs
+scoped synchronization. See
+[docs/intent.md](docs/intent.md) for approval, brownfield-characterization,
+correction-history, and failure-status semantics.
 
 ### Option 3: Issue-Driven CLI
 
