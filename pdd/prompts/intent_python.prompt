@@ -184,7 +184,9 @@ R8 - Stable structured output
 `intent_plan_to_dict` MUST emit JSON-serializable data with schema version
 `pdd.intent.plan.v1`, preserve list ordering, and include a capabilities object
 that truthfully reports `planning: true`, `apply: false`, `writes_project_files:
-false`, `requires_github: false`, and `invokes_llm: false`.
+false`, `requires_github: false`, and `invokes_llm: false`. Because `apply`
+describes this planning invocation rather than CLI availability, it MUST also
+report `apply_command_available: true`.
 
 R9 - Human review card
 `render_review_card` MUST show: What I heard, What will change, What must stay

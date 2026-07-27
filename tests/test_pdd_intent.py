@@ -90,6 +90,7 @@ def test_structured_plan_reports_truthful_capabilities(tmp_path: Path) -> None:
     assert payload["capabilities"] == {
         "planning": True,
         "apply": False,
+        "apply_command_available": True,
         "writes_project_files": False,
         "requires_github": False,
         "invokes_llm": False,

@@ -16,7 +16,7 @@ command selection, synchronization, and verification.
 Human control means authority over meaning and acceptable evidence. It does not
 mean the human must perform every file edit.
 
-## The first `pdd intent` release
+## Plan first
 
 The first safe vertical slice is read-only:
 
@@ -48,11 +48,80 @@ pdd intent plan --text "Add offline PDF export." --json
 - emits one human review card or stable JSON;
 - does not call a model;
 - does not change project files;
-- does not yet apply the plan.
+- does not apply the plan.
 
 The command is primarily an agent-facing primitive. A human using an AI coding
 harness should be able to speak normally while the harness selects the command
 and project scope.
+
+## Apply an approved plan
+
+After the human accepts the review card, the agent passes the exact intent ID
+back to PDD:
+
+```bash
+pdd intent apply \
+  --text "Add offline PDF export. Never upload the report." \
+  --project-root . \
+  --approve INTENT_ID_FROM_PLAN
+```
+
+The request, title, source, and project root must produce the same ID that was
+reviewed. A changed request produces a different ID and must be planned again.
+This prevents an agent from showing one interpretation and applying another.
+
+`pdd intent apply`:
+
+- requires no GitHub issue;
+- records the exact accepted request in
+  `docs/intents/intent__<intent-id>.md`;
+- maintains `docs/PRODUCT_INTENT.md`;
+- records machine-readable progress and failure status in
+  `.pdd/intents/<intent-id>.json`;
+- updates an existing prompt graph through local incremental PRD propagation;
+- creates a new prompt graph through the existing local architecture
+  orchestrator for greenfield work;
+- generates a story selectively, pauses for meaning-level approval of its
+  exact SHA-256, and only then generates its regression;
+- runs dependency-ordered scoped synchronization with evidence;
+- returns a concise report or stable `pdd.intent.apply.v1` JSON;
+- records partial failure honestly instead of claiming that every downstream
+  tool rolled back.
+
+For conventional existing code, the agent must first characterize current
+public behavior and critical negative boundaries with executable tests. It
+then supplies `--characterized`. The flag is an assertion that the work was
+performed, not a replacement for the tests.
+
+Corrections and removals are explicit events rather than silent history
+rewrites:
+
+```bash
+pdd intent apply \
+  --text "Use banker's rounding instead." \
+  --approve NEW_INTENT_ID_FROM_PLAN \
+  --kind correct \
+  --supersedes PRIOR_INTENT_ID
+```
+
+These flags are for the AI agent. The product/domain human should simply say
+the correction in ordinary language and approve its meaning.
+
+When a story is warranted, the first apply invocation returns status
+`awaiting_story_approval`, the story path, and its SHA-256. The agent presents
+the story in ordinary language. After the human confirms or corrects it, the
+agent resumes with the current file hash:
+
+```bash
+pdd intent apply \
+  --text "Add offline PDF export. Never upload the report." \
+  --approve INTENT_ID_FROM_PLAN \
+  --approve-story APPROVED_STORY_SHA256
+```
+
+PDD refuses to generate the story regression or run synchronization before
+that hash matches. If the story wording is edited, its hash changes and the
+new wording must be approved.
 
 ## The four adoption scenarios
 
@@ -269,21 +338,19 @@ source—should be committed when they are part of the product. Operational
 cache, temporary worktrees, resumable state, and some evidence under `.pdd/`
 follow separate repository policy and are not automatically product source.
 
-## The intended end state
-
-After the planning-only release, the next command layer should apply an
-approved plan:
+## The implemented intent flow
 
 ```text
 ordinary request
 -> review card
 -> human correction/approval
+-> durable Product Intent event
 -> agent-managed PDD source changes
 -> scoped synchronization
 -> tests and evidence
 ```
 
-Until that application layer exists, `pdd intent plan` must remain explicit
-that it changed nothing. Existing advanced `pdd change`, `pdd generate`,
-`pdd story`, and `pdd sync` commands remain available to agents and experienced
-operators.
+`pdd intent plan` remains strictly read-only. `pdd intent apply` is explicitly
+mutating and may invoke configured models or agentic CLIs. Existing advanced
+`pdd change`, `pdd generate`, `pdd story`, and `pdd sync` commands remain
+available to agents and experienced operators.

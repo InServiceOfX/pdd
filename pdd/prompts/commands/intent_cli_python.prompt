@@ -1,4 +1,4 @@
-<pdd-reason>Exposes local ordinary-language intent planning as a safe `pdd intent plan` command for humans and AI harnesses.</pdd-reason>
+<pdd-reason>Exposes local ordinary-language intent planning and exactly approved application as `pdd intent plan` and `pdd intent apply` for humans and AI harnesses.</pdd-reason>
 
 <pdd-interface>
 {
@@ -8,6 +8,10 @@
       {
         "name": "intent plan",
         "description": "Plan an ordinary-language request against local project evidence without changing files or requiring GitHub"
+      },
+      {
+        "name": "intent apply",
+        "description": "Apply the exact approved local intent plan through durable intent, prompt, story, test, and sync workflows without requiring GitHub"
       }
     ]
   }
@@ -15,26 +19,33 @@
 </pdd-interface>
 
 <pdd-dependency>intent_python.prompt</pdd-dependency>
+<pdd-dependency>intent_apply_python.prompt</pdd-dependency>
 
 % You are an expert Python engineer. Write `pdd/commands/intent.py`.
 
 <include>context/python_preamble.prompt</include>
 
 % Role & Scope
-  Implement a thin Click command group over `pdd.intent`. The command is an
+  Implement a thin Click command group over `pdd.intent` and
+  `pdd.intent_apply`. The command is an
   agent-facing front door, although it must also be understandable when a human
-  runs it. The first release is planning-only and deliberately has no `apply`
-  subcommand.
+  runs it.
+
+<vocabulary>
+- Correct: the literal `--kind correct` enum value for a new event that supersedes a prior local intent because its accepted meaning was wrong.
+</vocabulary>
 
 <contract_rules>
 R1 - Command surface
-Expose a `@click.group(name="intent")` named `intent_cli` with a `plan`
-subcommand. `pdd intent --help` MUST state that the group accepts ordinary
-product intent and handles PDD routing. `pdd intent plan --help` MUST state
-that planning is local, requires no GitHub issue, and changes no project files.
+Expose a `@click.group(name="intent")` named `intent_cli` with `plan` and
+`apply` subcommands. `pdd intent --help` MUST state that the group accepts
+ordinary product intent and handles PDD routing. `pdd intent plan --help` MUST
+state that planning is local, requires no GitHub issue, and changes no project
+files. `pdd intent apply --help` MUST state that it mutates the scoped project
+after exact plan approval and requires no GitHub issue.
 
 R2 - Input forms
-`intent plan` MUST accept exactly one input form: `--text
+Both subcommands MUST accept exactly one input form: `--text
 <ordinary-language request>`, positional `SOURCE` naming an existing local text
 file, or piped standard input when neither `SOURCE` nor `--text` is supplied.
 Reject simultaneous `SOURCE` and `--text`, missing interactive input,
@@ -44,9 +55,10 @@ characters with clear Click errors.
 R3 - Project and title options
 Support optional `--project-root <directory>` (default current directory) and
 `--title <human title>`. `--project-root` MAY name a proposed new directory
-that does not exist yet; planning MUST NOT create it. Resolve the project root
-before calling `build_intent_plan`. Do not require a GitHub URL, prompt path,
-internal target name, story slug, output path, or PDD configuration knowledge.
+that does not exist yet; planning MUST NOT create it and apply MAY create it
+only after exact approval. Resolve the project root before calling
+`build_intent_plan`. Do not require a GitHub URL, prompt path, internal target
+name, story slug, output path, or PDD configuration knowledge.
 
 R4 - Output modes
 Default output MUST be `render_review_card(plan)`. `--json` MUST instead emit
@@ -55,9 +67,27 @@ sorted object keys suitable for an AI harness. Do not mix status prose into
 JSON stdout.
 
 R5 - Planning-only truthfulness
-The command MUST NOT write any project files, call GitHub, invoke an LLM,
+The `plan` command MUST NOT write any project files, call GitHub, invoke an LLM,
 generate stories/tests/code, or run synchronization. It MUST never imply that
 the request was applied. Errors exit non-zero.
+
+R6 - Apply approval and agent options
+`intent apply` MUST require `--approve <intent-id>` and rebuild the same plan
+from the exact supplied request/root/title/source before calling
+`apply_intent`. Support agent-facing `--kind
+[add|clarify|correct|remove|replace]`, `--supersedes <intent-id>`,
+`--characterized`, `--no-story`, and `--no-sync`. The brownfield help MUST say
+that `--characterized` asserts tests were actually run. These are mechanical
+agent options, not questions the product human must answer.
+Support `--approve-story <sha256>` for the second approval gate. The agent MUST
+present the generated story's meaning before passing that hash.
+
+R7 - Apply output and exit
+Default apply output MUST use a concise human renderer.
+`--json` MUST emit only `intent_apply_result_to_dict` as indented,
+sorted-key JSON. A failed result MUST exit nonzero after emitting its report.
+An `awaiting_story_approval` result MUST exit 2 so a harness can distinguish it
+from a workflow failure. Do not mix child-process output into JSON stdout.
 </contract_rules>
 
 % Deliverables
