@@ -38,6 +38,10 @@
           {"name": "examples", "type": "Tuple[str, ...]"},
           {"name": "story_recommended", "type": "bool"},
           {"name": "story_reasons", "type": "Tuple[str, ...]"},
+          {"name": "acceptance_sentence", "type": "str"},
+          {"name": "human_questions", "type": "Tuple[str, ...]"},
+          {"name": "story_action", "type": "str"},
+          {"name": "matched_stories", "type": "Tuple[str, ...]"},
           {"name": "recommended_workflow", "type": "str"},
           {"name": "open_decisions", "type": "Tuple[str, ...]"},
           {"name": "warnings", "type": "Tuple[str, ...]"}
@@ -158,12 +162,27 @@ Extract example-bearing sentences using markers such as `for example`, `e.g.`,
 `such as`, or `when`. Preserve their original wording and cap each list at five.
 Absence is honest and MUST NOT cause invented constraints/examples.
 
-R6 - Selective story recommendation
-Recommend independent story coverage only when deterministic request evidence
+R6 - Selective independent-check recommendation
+Recommend extra independent coverage only when deterministic request evidence
 suggests user-visible behavior, cross-part/end-to-end behavior, a regression,
 or a critical MUST/MUST-NOT/security/privacy/data-loss boundary. Return the
 reason categories. This is a recommendation only: planning MUST NOT write story
-files or invoke `pdd story`.
+files or invoke `pdd story`. Also store a deterministic `acceptance_sentence`
+taken from the first sentence of the request (shortened if longer than 200
+characters) so a harness can show the independent check without inventing an
+"As a user..." story or calling a model.
+
+R6b - Amend or delete a saved experience
+When the project already has `user_stories/story__*.md` files, inspect the
+request for an ordinary-language amend or delete. Delete markers include
+phrases such as `delete the story`, `remove the story`, `drop the story`,
+and `forget the story`. Amend markers include `change the story`,
+`update the story`, `that story is wrong`, `the experience is wrong`, and
+`the story should`. Set `story_action` to `delete`, `amend`, `create`, or
+`none`. Match at most one existing story by token overlap with its title and
+`## Story` body. If the action is amend or delete and no single story matches
+confidently, leave `matched_stories` empty and ask which saved experience to
+change. Never invent a story path. Planning MUST NOT edit or delete files.
 
 R7 - Workflow routing
 The plan MUST return exactly one stable workflow identifier. It MUST return
@@ -191,9 +210,27 @@ report `apply_command_available: true`.
 R9 - Human review card
 `render_review_card` MUST show: What I heard, What will change, What must stay
 unchanged, Important examples, How we will prove it, Affected product areas,
-Open decisions, and Story coverage. It MUST describe technical candidates as
+Open decisions, and Independent check. It MUST describe technical candidates as
 proposals, avoid requiring PDD jargon from the human, and end by stating that
-this is planning only and no project files were changed.
+this is planning only and no project files were changed. It MUST NOT use the
+heading "Story coverage" or ask the human to inspect a user-story file. It
+MUST NOT show internal labels such as `greenfield`, `brownfield`,
+`existing_pdd`, `project_kind`, or `adoption_scenario`. When a story will be
+amended or deleted, What will change MUST name the saved experience path in
+ordinary language (`Update this saved experience` / `Remove this saved
+experience`). When `human_questions` is non-empty, it MUST also show an
+"Ask the human" section containing those ordinary-language questions.
+
+R9b - Ordinary-language questions for the harness
+`human_questions` MUST be a short list of questions a coding harness can ask
+the human in conversation. It MUST NOT mention command flags, hashes, slugs,
+dev units, or file formats. Emit a question when greenfield work names no
+language or runtime ("What language or runtime should this be built with?"),
+when brownfield work needs characterization ("Which current behavior should we
+lock down with tests before changing anything?"), or when an existing PDD
+project has no confident product-area candidate ("Which part of the product
+should this change?"). `intent_plan_to_dict` MUST include `ask_the_human` and
+an `acceptance` object with the sentence plus the existing story recommendation.
 
 R10 - No side effects
 All public functions in this module MUST be deterministic and read-only with

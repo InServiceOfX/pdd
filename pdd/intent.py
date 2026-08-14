@@ -152,6 +152,48 @@ _NEGATIVE_OR_INVARIANT_MARKERS = (
     "unchanged",
 )
 _EXAMPLE_MARKERS = ("for example", "e.g.", "such as", "when ")
+_STORY_DELETE_MARKERS = (
+    "delete the story",
+    "remove the story",
+    "drop the story",
+    "forget the story",
+    "delete that story",
+    "remove that story",
+    "delete this story",
+    "remove this story",
+    "delete that experience",
+    "remove that experience",
+)
+_STORY_AMEND_MARKERS = (
+    "change the story",
+    "update the story",
+    "amend the story",
+    "fix the story",
+    "correct the story",
+    "that story is wrong",
+    "this story is wrong",
+    "the story is wrong",
+    "the experience is wrong",
+    "the story should",
+    "change that experience",
+    "update that experience",
+)
+_STORY_MATCH_STOP = _STOP_WORDS | {
+    "amend",
+    "change",
+    "correct",
+    "delete",
+    "drop",
+    "experience",
+    "fix",
+    "forget",
+    "remove",
+    "saved",
+    "stories",
+    "story",
+    "update",
+    "wrong",
+}
 # Deliberately excludes ambiguous ordinary words such as "go", "c", and "r":
 # a missed technology only costs an explicit assertion, while a false match
 # lets greenfield generation start against an undecided stack.
@@ -250,6 +292,10 @@ class IntentPlan:
     examples: Tuple[str, ...]
     story_recommended: bool
     story_reasons: Tuple[str, ...]
+    acceptance_sentence: str
+    human_questions: Tuple[str, ...]
+    story_action: str
+    matched_stories: Tuple[str, ...]
     recommended_workflow: str
     open_decisions: Tuple[str, ...]
     warnings: Tuple[str, ...]
@@ -602,6 +648,132 @@ def _story_recommendation(request: str) -> Tuple[bool, Tuple[str, ...]]:
     return bool(reasons), tuple(reasons)
 
 
+def _acceptance_sentence(request: str) -> str:
+    """Return a short independent-check sentence taken from the request."""
+    first = next(iter(_sentences(request)), request.strip())
+    if len(first) <= 200:
+        return first
+    return textwrap.shorten(first, width=200, placeholder="...")
+
+
+def _story_body(text: str) -> str:
+    match = re.search(r"## Story\s*\n(.*?)(?=\n## |\Z)", text, re.S)
+    return (match.group(1) if match else text).strip()
+
+
+def _story_title_from_file(text: str, path: Path) -> str:
+    heading = re.search(r"^#\s+(.+)$", text, re.M)
+    if heading:
+        return heading.group(1).strip()
+    return path.stem.replace("story__", "").replace("_", " ")
+
+
+def _load_saved_stories(root: Path) -> Tuple[Tuple[str, str, str], ...]:
+    stories_dir = root / "user_stories"
+    if not stories_dir.is_dir():
+        return ()
+    found: List[Tuple[str, str, str]] = []
+    for path in sorted(stories_dir.glob("story__*.md")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        found.append(
+            (
+                _relative_display(path, root),
+                _story_title_from_file(text, path),
+                _story_body(text),
+            )
+        )
+    return tuple(found)
+
+
+def _detect_story_action(request: str) -> str:
+    lowered = request.casefold()
+    if any(marker in lowered for marker in _STORY_DELETE_MARKERS):
+        return "delete"
+    if any(marker in lowered for marker in _STORY_AMEND_MARKERS):
+        return "amend"
+    return "none"
+
+
+def _story_match_tokens(text: str) -> set[str]:
+    return {
+        token
+        for token in _tokens(text)
+        if token not in _STORY_MATCH_STOP
+    }
+
+
+def _token_hits(request_tokens: set[str], story_tokens: set[str]) -> set[str]:
+    hits: set[str] = set()
+    for request_token in request_tokens:
+        for story_token in story_tokens:
+            if request_token == story_token or (
+                len(request_token) >= 5
+                and len(story_token) >= 5
+                and (
+                    request_token.startswith(story_token)
+                    or story_token.startswith(request_token)
+                )
+            ):
+                hits.add(request_token)
+                break
+    return hits
+
+
+def _match_saved_stories(
+    request: str, stories: Sequence[Tuple[str, str, str]]
+) -> Tuple[str, ...]:
+    request_tokens = _story_match_tokens(request)
+    if not request_tokens or not stories:
+        return ()
+    ranked: List[Tuple[int, str, Tuple[str, ...]]] = []
+    for path, title, body in stories:
+        hits = _token_hits(request_tokens, _story_match_tokens(f"{title} {body}"))
+        if not hits:
+            continue
+        ranked.append((len(hits), path, tuple(sorted(hits))))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    if not ranked:
+        return ()
+    best = ranked[0][0]
+    if best < 1:
+        return ()
+    cutoff = max(1, (best * 3 + 4) // 5)
+    confident = [path for score, path, _ in ranked if score >= cutoff]
+    if len(confident) != 1:
+        return ()
+    return (confident[0],)
+
+
+def _human_questions(
+    project_kind: str,
+    request: str,
+    candidates: Sequence[IntentTarget],
+    *,
+    story_action: str = "none",
+    matched_stories: Sequence[str] = (),
+) -> Tuple[str, ...]:
+    """Questions a harness can ask in ordinary conversation, with no PDD jargon."""
+    questions: List[str] = []
+    if story_action in {"amend", "delete"} and not matched_stories:
+        questions.append("Which saved experience should I change?")
+    if project_kind == "greenfield" and not detected_technology_terms(request):
+        questions.append("What language or runtime should this be built with?")
+    if project_kind == "conventional_brownfield":
+        questions.append(
+            "Which current behavior should we lock down with tests before changing anything?"
+        )
+    if (
+        project_kind == "existing_pdd"
+        and not candidates
+        and not (story_action in {"amend", "delete"} and matched_stories)
+    ):
+        questions.append("Which part of the product should this change?")
+    return tuple(questions)
+
+
 def detected_technology_terms(request: str) -> Tuple[str, ...]:
     """Return technology names stated in the request, in stable order.
 
@@ -696,30 +868,44 @@ def build_intent_plan(
     constraints = _marked_sentences(retained_request, _NEGATIVE_OR_INVARIANT_MARKERS)
     examples = _marked_sentences(retained_request, _EXAMPLE_MARKERS)
     story_recommended, story_reasons = _story_recommendation(retained_request)
+    acceptance_sentence = _acceptance_sentence(retained_request)
+    saved_stories = _load_saved_stories(root) if project_exists else ()
+    requested_story_action = _detect_story_action(retained_request)
+    matched_stories = (
+        _match_saved_stories(retained_request, saved_stories)
+        if requested_story_action in {"amend", "delete"}
+        else ()
+    )
+    if requested_story_action in {"amend", "delete"}:
+        story_action = requested_story_action
+        story_recommended = False
+    elif story_recommended:
+        story_action = "create"
+    else:
+        story_action = "none"
 
     open_decisions: List[str] = []
-    if project_kind == "existing_pdd" and not candidates:
-        open_decisions.append(
-            "No affected product area could be identified confidently; the agent must "
-            "inspect the prompt graph or propose a new area."
-        )
+    if requested_story_action in {"amend", "delete"} and not matched_stories:
+        open_decisions.append("Which saved experience should I change?")
+    if (
+        project_kind == "existing_pdd"
+        and not candidates
+        and not (story_action in {"amend", "delete"} and matched_stories)
+    ):
+        open_decisions.append("I am not sure which part of the product this changes.")
     elif project_kind == "conventional_brownfield":
         open_decisions.append(
-            "Decide which existing behavior must be characterized before PDD "
-            "ownership is introduced."
+            "Which current behavior should we lock down with tests before changing anything?"
         )
     elif project_kind == "greenfield":
-        open_decisions.append(
-            "Review the proposed technology choices and architecture before prompt generation."
-        )
         if not detected_technology_terms(retained_request):
             open_decisions.append(
                 "No language or runtime was named; decide the technology before any "
-                "greenfield generation is attempted."
+                "generation is attempted."
             )
             warnings.append(
-                "Greenfield generation cannot select a technology on its own. Apply "
-                "will refuse until the request names one or the agent asserts it."
+                "A new project cannot pick a language on its own. Apply will refuse "
+                "until the request names one or the agent asserts it."
             )
         if project_exists and other_content_found:
             open_decisions.append(
@@ -728,12 +914,11 @@ def build_intent_plan(
             )
             warnings.append(
                 "Project root already contains non-source files such as documentation. "
-                "It is classified greenfield only because no recognized source was found."
+                "Nothing here looks like existing software yet."
             )
     if scope_kind == "subproject":
         open_decisions.append(
-            "Confirm the subproject boundary and the integration checks required "
-            "at the containing repository boundary."
+            "This sits inside a larger repository. Confirm we should only change this folder."
         )
     if not examples:
         open_decisions.append(
@@ -760,6 +945,16 @@ def build_intent_plan(
         examples=examples,
         story_recommended=story_recommended,
         story_reasons=story_reasons,
+        acceptance_sentence=acceptance_sentence,
+        human_questions=_human_questions(
+            project_kind,
+            retained_request,
+            candidates,
+            story_action=story_action,
+            matched_stories=matched_stories,
+        ),
+        story_action=story_action,
+        matched_stories=matched_stories,
         recommended_workflow=workflow,
         open_decisions=tuple(open_decisions),
         warnings=tuple(warnings),
@@ -800,9 +995,17 @@ def intent_plan_to_dict(plan: IntentPlan) -> Dict[str, Any]:
             "examples": list(plan.examples),
             "open_decisions": list(plan.open_decisions),
         },
+        "acceptance": {
+            "sentence": plan.acceptance_sentence,
+            "story_recommended": plan.story_recommended,
+            "reasons": list(plan.story_reasons),
+        },
+        "ask_the_human": list(plan.human_questions),
         "story": {
             "recommended": plan.story_recommended,
             "reasons": list(plan.story_reasons),
+            "action": plan.story_action,
+            "matched": list(plan.matched_stories),
         },
         "recommended_workflow": plan.recommended_workflow,
         "warnings": list(plan.warnings),
@@ -825,29 +1028,38 @@ def _section_lines(items: Sequence[str], empty_message: str) -> List[str]:
 
 def render_review_card(plan: IntentPlan) -> str:
     """Render one plain-language review card for the product/domain human."""
-    if plan.candidate_targets:
+    if plan.story_action == "delete" and plan.matched_stories:
         change_lines = [
-            "- Candidate impact: "
+            f"- Remove this saved experience: {path}"
+            for path in plan.matched_stories
+        ]
+    elif plan.story_action == "amend" and plan.matched_stories:
+        change_lines = [
+            f"- Update this saved experience: {path}"
+            for path in plan.matched_stories
+        ]
+    elif plan.candidate_targets:
+        change_lines = [
+            "- This may affect: "
             + ", ".join(target.product_area for target in plan.candidate_targets)
         ]
-        area_lines = [
-            f"- {target.product_area} (candidate; matched: "
-            f"{', '.join(target.matched_terms)})"
-            for target in plan.candidate_targets
-        ]
     elif plan.project_kind == "greenfield":
-        change_lines = ["- A product architecture and prompt graph need to be proposed."]
-        area_lines = ["- No product areas exist yet; architecture review comes first."]
+        change_lines = ["- A new project will be set up from what you asked."]
     elif plan.project_kind == "conventional_brownfield":
         change_lines = [
-            "- Existing behavior must be characterized before assigning PDD ownership."
+            "- Existing software will be locked down with tests before it is generated from."
         ]
-        area_lines = ["- No PDD-owned product area has been established."]
     else:
-        change_lines = [
-            "- The affected PDD-owned area still needs repository inspection; none was guessed."
-        ]
-        area_lines = ["- No confident candidate yet."]
+        change_lines = ["- I am not sure which part of the product this changes."]
+
+    if plan.candidate_targets:
+        area_lines = [f"- {target.product_area}" for target in plan.candidate_targets]
+    elif plan.project_kind == "greenfield":
+        area_lines = ["- Nothing is generated yet."]
+    elif plan.project_kind == "conventional_brownfield":
+        area_lines = ["- No generated parts exist yet."]
+    else:
+        area_lines = ["- No confident product part yet."]
 
     proof_lines = [
         "- Preserve and run relevant existing tests before applying the change.",
@@ -858,15 +1070,13 @@ def render_review_card(plan: IntentPlan) -> str:
     if plan.project_kind == "greenfield":
         proof_lines.append("- Verify one small end-to-end slice before broad generation.")
 
-    story_text = (
-        "Recommended because " + ", ".join(plan.story_reasons) + "."
+    extra_coverage = (
+        "Extra coverage recommended because " + ", ".join(plan.story_reasons) + "."
         if plan.story_recommended
-        else "Not automatically recommended from the current wording."
+        else "Your original request is enough; no separate acceptance file is needed."
     )
     lines = [
         f"Intent plan: {plan.title}",
-        f"Project state: {plan.project_kind}",
-        f"Project scope: {plan.scope_kind} ({plan.adoption_scenario})",
         "",
         "What I heard:",
         plan.original_request,
@@ -889,9 +1099,14 @@ def render_review_card(plan: IntentPlan) -> str:
         "Open decisions:",
         *_section_lines(plan.open_decisions, "None identified by deterministic planning."),
         "",
-        "Story coverage:",
-        f"- {story_text}",
+        "Independent check:",
+        f"- {plan.acceptance_sentence}",
+        f"- {extra_coverage}",
     ]
+    if plan.human_questions:
+        lines.extend(
+            ("", "Ask the human:", *_section_lines(plan.human_questions, ""))
+        )
     if plan.warnings:
         lines.extend(("", "Warnings:", *_section_lines(plan.warnings, "")))
     lines.extend(

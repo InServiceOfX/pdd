@@ -105,7 +105,7 @@ def test_conventional_project_routes_through_characterization(tmp_path: Path) ->
     assert plan.project_kind == "conventional_brownfield"
     assert plan.adoption_scenario == "existing_project_adoption"
     assert plan.recommended_workflow == "characterize_then_adopt"
-    assert "characterized" in plan.open_decisions[0]
+    assert "tests" in plan.open_decisions[0]
 
 
 def test_existing_monorepo_subproject_is_scoped_locally(tmp_path: Path) -> None:
@@ -124,7 +124,7 @@ def test_existing_monorepo_subproject_is_scoped_locally(tmp_path: Path) -> None:
     assert plan.project_kind == "conventional_brownfield"
     assert plan.adoption_scenario == "existing_subproject_adoption"
     assert plan.pdd_signals == ()
-    assert any("repository boundary" in item for item in plan.open_decisions)
+    assert any("larger repository" in item for item in plan.open_decisions)
 
 
 def test_proposed_new_monorepo_subproject_need_not_exist(tmp_path: Path) -> None:
@@ -170,7 +170,7 @@ def test_no_token_match_does_not_fabricate_target(tmp_path: Path) -> None:
     plan = build_intent_plan("Add multilingual checkout receipts.", tmp_path)
 
     assert plan.candidate_targets == ()
-    assert any("No affected product area" in item for item in plan.open_decisions)
+    assert any("not sure which part of the product" in item for item in plan.open_decisions)
 
 
 def test_generic_workflow_terms_do_not_select_unrelated_modules(
@@ -242,10 +242,29 @@ def test_review_card_uses_human_headings_and_disclaims_application(tmp_path: Pat
         "How we will prove it:",
         "Affected product areas:",
         "Open decisions:",
-        "Story coverage:",
+        "Independent check:",
+        "Ask the human:",
     ):
         assert heading in card
+    assert "Story coverage:" not in card
+    assert "Project state:" not in card
+    assert "greenfield" not in card
+    assert "brownfield" not in card
+    assert "existing_pdd" not in card
+    assert "prompt graph" not in card
+    assert "What language or runtime should this be built with?" in card
     assert "Planning only: no project files were changed" in card
+
+
+def test_named_technology_does_not_ask_for_a_stack(tmp_path: Path) -> None:
+    plan = build_intent_plan("Create a Python calculator.", tmp_path)
+    payload = intent_plan_to_dict(plan)
+
+    assert plan.acceptance_sentence == "Create a Python calculator."
+    assert plan.human_questions == ()
+    assert payload["ask_the_human"] == []
+    assert payload["acceptance"]["sentence"] == "Create a Python calculator."
+    assert "Ask the human:" not in render_review_card(plan)
 
 
 @pytest.mark.parametrize("intent_text", ["", " ", "\n\t"])
@@ -321,7 +340,7 @@ def test_greenfield_without_a_named_technology_is_flagged(tmp_path: Path) -> Non
     assert plan.project_kind == "greenfield"
     assert detected_technology_terms(plan.original_request) == ()
     assert any("No language or runtime" in item for item in plan.open_decisions)
-    assert any("cannot select a technology" in item for item in plan.warnings)
+    assert any("cannot pick a language" in item for item in plan.warnings)
 
 
 def test_named_technology_is_detected_and_not_flagged(tmp_path: Path) -> None:
@@ -331,9 +350,62 @@ def test_named_technology_is_detected_and_not_flagged(tmp_path: Path) -> None:
 
     assert detected_technology_terms(plan.original_request) == ("poetry", "python")
     assert not any("No language or runtime" in item for item in plan.open_decisions)
-    assert not any("cannot select a technology" in item for item in plan.warnings)
+    assert not any("cannot pick a language" in item for item in plan.warnings)
 
 
 def test_ambiguous_english_is_not_mistaken_for_a_technology() -> None:
     """A false positive would let generation start on an undecided stack."""
     assert detected_technology_terms("Go through the c and r columns.") == ()
+
+
+def _write_email_story(root: Path) -> Path:
+    stories = root / "user_stories"
+    stories.mkdir(parents=True)
+    path = stories / "story__email_report.md"
+    path.write_text(
+        "# User Story: email report\n\n"
+        "## Story\n\n"
+        "Email the finished report to the operator after export.\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_plan_matches_a_story_to_delete(tmp_path: Path) -> None:
+    _write_email_story(tmp_path)
+    (tmp_path / ".pddrc").write_text("version: '1.0'\n", encoding="utf-8")
+
+    plan = build_intent_plan(
+        "Delete the story about emailing the report.", tmp_path
+    )
+    card = render_review_card(plan)
+
+    assert plan.story_action == "delete"
+    assert plan.matched_stories == ("user_stories/story__email_report.md",)
+    assert "Remove this saved experience: user_stories/story__email_report.md" in card
+    assert "Which part of the product should this change?" not in card
+
+
+def test_plan_matches_a_story_to_amend(tmp_path: Path) -> None:
+    _write_email_story(tmp_path)
+    (tmp_path / ".pddrc").write_text("version: '1.0'\n", encoding="utf-8")
+
+    plan = build_intent_plan(
+        "That story is wrong. Save the report locally instead of emailing it.",
+        tmp_path,
+    )
+
+    assert plan.story_action == "amend"
+    assert plan.matched_stories == ("user_stories/story__email_report.md",)
+    assert "Update this saved experience:" in render_review_card(plan)
+
+
+def test_unmatched_story_change_asks_which_experience(tmp_path: Path) -> None:
+    _write_email_story(tmp_path)
+    (tmp_path / ".pddrc").write_text("version: '1.0'\n", encoding="utf-8")
+
+    plan = build_intent_plan("Delete the story about calendar invites.", tmp_path)
+
+    assert plan.story_action == "delete"
+    assert plan.matched_stories == ()
+    assert "Which saved experience should I change?" in plan.human_questions

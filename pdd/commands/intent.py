@@ -154,7 +154,15 @@ def plan_intent(
     "--approve-story",
     "approved_story_sha256",
     default=None,
-    help="SHA-256 of the generated story wording reviewed by the human.",
+    help="SHA-256 of story wording, only when --require-story-approval is used.",
+)
+@click.option(
+    "--require-story-approval",
+    is_flag=True,
+    help=(
+        "Pause after generating a story so a harness can confirm its exact wording. "
+        "Default: plan approval is enough."
+    ),
 )
 @click.option("--no-story", is_flag=True, help="Agent override: skip selective story coverage.")
 @click.option("--no-sync", is_flag=True, help="Agent override: stop after intent/prompt work.")
@@ -172,6 +180,7 @@ def apply_intent_command(
     characterized: bool,
     technology: Optional[str],
     approved_story_sha256: Optional[str],
+    require_story_approval: bool,
     no_story: bool,
     no_sync: bool,
     as_json: bool,
@@ -196,6 +205,7 @@ def apply_intent_command(
             create_story=not no_story,
             run_sync=not no_sync,
             approved_story_sha256=approved_story_sha256,
+            require_story_approval=require_story_approval,
             quiet=bool((ctx.obj or {}).get("quiet", False)),
             verbose=bool((ctx.obj or {}).get("verbose", False)),
         )

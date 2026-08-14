@@ -25,7 +25,7 @@
     "functions": [
       {
         "name": "apply_intent",
-        "signature": "(plan: IntentPlan, *, approved_intent_id: str, intent_kind: str = 'add', supersedes: Optional[str] = None, characterized: bool = False, technology: Optional[str] = None, create_story: bool = True, run_sync: bool = True, approved_story_sha256: Optional[str] = None, quiet: bool = False, verbose: bool = False) -> IntentApplyResult",
+        "signature": "(plan: IntentPlan, *, approved_intent_id: str, intent_kind: str = 'add', supersedes: Optional[str] = None, characterized: bool = False, technology: Optional[str] = None, create_story: bool = True, run_sync: bool = True, approved_story_sha256: Optional[str] = None, require_story_approval: bool = False, quiet: bool = False, verbose: bool = False) -> IntentApplyResult",
         "returns": "IntentApplyResult"
       },
       {
@@ -104,16 +104,31 @@ disabled and a deterministic local workflow identity. It MUST NOT silently
 fall back from a failed incremental run to full regeneration.
 
 R5 - Selective story and regression
-When the plan recommends a story and `create_story=True`, link it to prompt
-files changed by architecture propagation, falling back to conservatively
-discovered plan candidates. The system MUST invoke the existing
-`pdd story add` command. Before regression generation, it MUST hash the exact
-story file and compare it with `approved_story_sha256`. A missing or different
-hash MUST return `status="awaiting_story_approval"`, explicit
+When `plan.story_action` is `delete`, apply MUST delete each confidently
+matched `user_stories/story__*.md` file plus its sibling contract
+(`user_stories/contracts/<slug>.contract.md`) and regression
+(`tests/story_regression/test_story_<slug>.py`) when those files exist. It
+MUST NOT create a replacement story. If the action is delete or amend and no
+story was matched, apply MUST fail rather than guessing. When
+`plan.story_action` is `amend`, apply MUST replace the `## Story` body of each
+matched file with the original request text and MUST NOT invent an
+"As a user..." rewrite. When `plan.story_action` is `create` or the plan
+recommends a story and `create_story=True` with no amend/delete action, link
+it to prompt files changed by architecture propagation, falling back to
+conservatively discovered plan candidates, and invoke the existing
+`pdd story add` command. The approved plan is enough to continue: the original
+request is the independent oracle, so apply MUST generate the story regression
+and continue to sync without a second human checkpoint. It MUST NOT return
+`awaiting_story_approval` by default and MUST NOT require a coding harness to
+surface a user-story file or SHA-256. If `require_story_approval` is true, or
+if `approved_story_sha256` is supplied and does not match the current story
+file hash, it MUST return `status="awaiting_story_approval"`, explicit
 `approval_required` path/hash fields, and MUST NOT run regression generation or
-sync. Only a matching hash MAY invoke `pdd test --from-story`. If no prompt can
-be linked, it MUST fail rather than inventing a mapping. When story coverage is
-not recommended or is disabled, it MUST record an explicit skipped step.
+sync. Only then MAY a matching hash invoke `pdd test --from-story` on resume.
+If create is required and no prompt can be linked, it MUST fail rather than
+inventing a mapping. When story coverage is not recommended, is disabled, or
+was already handled as amend/delete, it MUST record an explicit skipped or
+completed story step.
 
 R6 - Scoped synchronization
 After each prompt/architecture and story prerequisite is Completed, run project-wide

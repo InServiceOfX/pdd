@@ -267,9 +267,56 @@ def test_recommended_story_regression_and_sync_use_existing_commands(
             output.write_text("def test_story(): pass\n", encoding="utf-8")
         return _WorkflowOutcome(True, "ok")
 
+    result = apply_intent(
+        plan,
+        approved_intent_id=plan.intent_id,
+        _architecture_runner=_successful_architecture,
+        _command_runner=command_runner,
+    )
+
+    assert result.success
+    assert result.status == "applied"
+    assert commands[0][:2] == ["story", "add"]
+    assert commands[1][:2] == ["test", "--from-story"]
+    assert commands[2] == ["--force", "sync", "--evidence", "--no-steer"]
+    assert [step["name"] for step in result.steps] == [
+        "durable_intent",
+        "architecture_and_prompts",
+        "story",
+        "story_regression",
+        "sync",
+    ]
+
+
+def test_require_story_approval_still_pauses_before_regression(
+    tmp_path: Path,
+) -> None:
+    request = (
+        "Create a Python calculator. Never send operands over the network. "
+        "For example, two plus two returns four."
+    )
+    plan = build_intent_plan(request, tmp_path)
+    commands: list[list[str]] = []
+
+    def command_runner(args, root: Path) -> _WorkflowOutcome:
+        command = list(args)
+        commands.append(command)
+        if command[:2] == ["story", "add"]:
+            from pdd.intent_apply import _story_paths
+
+            story_path, _ = _story_paths(plan, root)
+            story_path.parent.mkdir(parents=True, exist_ok=True)
+            story_path.write_text("# Story\n", encoding="utf-8")
+        elif command[0] == "test":
+            output = Path(command[command.index("--output") + 1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text("def test_story(): pass\n", encoding="utf-8")
+        return _WorkflowOutcome(True, "ok")
+
     awaiting = apply_intent(
         plan,
         approved_intent_id=plan.intent_id,
+        require_story_approval=True,
         _architecture_runner=_successful_architecture,
         _command_runner=command_runner,
     )
@@ -283,6 +330,7 @@ def test_recommended_story_regression_and_sync_use_existing_commands(
     result = apply_intent(
         plan,
         approved_intent_id=plan.intent_id,
+        require_story_approval=True,
         approved_story_sha256=awaiting.approval_required["sha256"],
         _architecture_runner=_successful_architecture,
         _command_runner=command_runner,
@@ -291,14 +339,88 @@ def test_recommended_story_regression_and_sync_use_existing_commands(
     assert result.success
     assert commands[1][:2] == ["story", "link"]
     assert commands[2][:2] == ["test", "--from-story"]
-    assert commands[3] == ["--force", "sync", "--evidence", "--no-steer"]
-    assert [step["name"] for step in result.steps] == [
-        "durable_intent",
-        "architecture_and_prompts",
-        "story",
-        "story_regression",
-        "sync",
-    ]
+
+
+def test_apply_deletes_a_matched_saved_experience(tmp_path: Path) -> None:
+    stories = tmp_path / "user_stories"
+    stories.mkdir()
+    story = stories / "story__email_report.md"
+    story.write_text(
+        "# User Story: email report\n\n## Story\n\nEmail the finished report.\n",
+        encoding="utf-8",
+    )
+    contract = stories / "contracts" / "email_report.contract.md"
+    contract.parent.mkdir()
+    contract.write_text("generated contract\n", encoding="utf-8")
+    regression = tmp_path / "tests" / "story_regression" / "test_story_email_report.py"
+    regression.parent.mkdir(parents=True)
+    regression.write_text("def test_story(): pass\n", encoding="utf-8")
+    (tmp_path / ".pddrc").write_text("version: '1.0'\n", encoding="utf-8")
+    plan = build_intent_plan("Delete the story about emailing the report.", tmp_path)
+
+    result = apply_intent(
+        plan,
+        approved_intent_id=plan.intent_id,
+        run_sync=False,
+        _architecture_runner=_successful_architecture,
+    )
+
+    assert result.success
+    assert plan.story_action == "delete"
+    assert not story.exists()
+    assert not contract.exists()
+    assert not regression.exists()
+    assert "user_stories/story__email_report.md" in result.changed_files
+
+
+def test_apply_amends_a_matched_saved_experience(tmp_path: Path) -> None:
+    stories = tmp_path / "user_stories"
+    stories.mkdir()
+    story = stories / "story__email_report.md"
+    story.write_text(
+        "# User Story: email report\n\n## Story\n\nEmail the finished report.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".pddrc").write_text("version: '1.0'\n", encoding="utf-8")
+    request = (
+        "That story is wrong. Save the report locally instead of emailing it."
+    )
+    plan = build_intent_plan(request, tmp_path)
+
+    result = apply_intent(
+        plan,
+        approved_intent_id=plan.intent_id,
+        run_sync=False,
+        _architecture_runner=_successful_architecture,
+    )
+
+    assert result.success
+    body = story.read_text(encoding="utf-8")
+    assert request in body
+    assert "Email the finished report." not in body
+
+
+def test_apply_refuses_to_guess_an_unmatched_story(tmp_path: Path) -> None:
+    stories = tmp_path / "user_stories"
+    stories.mkdir()
+    story = stories / "story__email_report.md"
+    story.write_text(
+        "# User Story: email report\n\n## Story\n\nEmail the finished report.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".pddrc").write_text("version: '1.0'\n", encoding="utf-8")
+    plan = build_intent_plan("Delete the story about calendar invites.", tmp_path)
+
+    result = apply_intent(
+        plan,
+        approved_intent_id=plan.intent_id,
+        run_sync=False,
+        _architecture_runner=_successful_architecture,
+    )
+
+    assert result.success is False
+    assert "No saved experience matched" in result.message
+    assert story.exists()
 
 
 def test_structured_result_is_stable(tmp_path: Path) -> None:

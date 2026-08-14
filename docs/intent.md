@@ -44,7 +44,9 @@ pdd intent plan --text "Add offline PDF export." --json
 - classifies the selected project scope;
 - discovers candidate prompt-owned product areas conservatively;
 - extracts stated examples and preservation constraints;
-- recommends independent story coverage selectively;
+- recommends extra independent coverage selectively;
+- emits ordinary-language `ask_the_human` questions for missing decisions
+  such as a language or runtime;
 - emits one human review card or stable JSON;
 - does not call a model;
 - does not change project files;
@@ -81,8 +83,9 @@ This prevents an agent from showing one interpretation and applying another.
 - updates an existing prompt graph through local incremental PRD propagation;
 - creates a new prompt graph through the existing local architecture
   orchestrator for greenfield work;
-- generates a story selectively, pauses for meaning-level approval of its
-  exact SHA-256, and only then generates its regression;
+- generates a story selectively when warranted and continues; the approved
+  request is the independent oracle. `--require-story-approval` restores the
+  older SHA-256 pause;
 - runs dependency-ordered scoped synchronization with evidence;
 - returns a concise report or stable `pdd.intent.apply.v1` JSON;
 - records partial failure honestly instead of claiming that every downstream
@@ -122,21 +125,40 @@ pdd intent apply \
 These flags are for the AI agent. The product/domain human should simply say
 the correction in ordinary language and approve its meaning.
 
-When a story is warranted, the first apply invocation returns status
-`awaiting_story_approval`, the story path, and its SHA-256. The agent presents
-the story in ordinary language. After the human confirms or corrects it, the
-agent resumes with the current file hash:
+When extra independent coverage is warranted, apply writes the story and
+continues. The approved plan already contains the original request, which is
+the independent oracle. A coding harness must not stop to show a user-story
+file or SHA-256. If the human later says that a saved experience is wrong,
+ordinary language is enough:
+
+```bash
+pdd intent plan --text "That story is wrong. Save the report locally instead of emailing it."
+pdd intent apply --text "That story is wrong. Save the report locally instead of emailing it." \
+  --approve INTENT_ID_FROM_PLAN
+```
+
+```bash
+pdd intent plan --text "Delete the story about emailing the report."
+pdd intent apply --text "Delete the story about emailing the report." \
+  --approve INTENT_ID_FROM_PLAN
+```
+
+Apply updates or removes the matched `user_stories/story__*.md` file. The
+human does not name the file. If no single story matches, planning asks which
+saved experience to change and apply refuses to guess.
+
+If a team still wants that older second checkpoint:
 
 ```bash
 pdd intent apply \
   --text "Add offline PDF export. Never upload the report." \
   --approve INTENT_ID_FROM_PLAN \
-  --approve-story APPROVED_STORY_SHA256
+  --require-story-approval
 ```
 
-PDD refuses to generate the story regression or run synchronization before
-that hash matches. If the story wording is edited, its hash changes and the
-new wording must be approved.
+That optional path returns `awaiting_story_approval` with the story path and
+SHA-256. Resume only with `--approve-story` of the exact wording the human
+confirmed. The default path does not do this.
 
 ## The four adoption scenarios
 

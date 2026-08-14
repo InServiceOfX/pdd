@@ -491,6 +491,63 @@ def _story_paths(plan: IntentPlan, root: Path) -> Tuple[Path, Path]:
     return story, regression
 
 
+def _story_slug_from_path(path: Path) -> str:
+    name = path.name
+    if name.startswith("story__") and name.endswith(".md"):
+        return name[len("story__") : -len(".md")]
+    return path.stem
+
+
+def _story_related_paths(story_path: Path, root: Path) -> List[Path]:
+    slug = _story_slug_from_path(story_path)
+    return [
+        story_path,
+        root / "user_stories" / "contracts" / f"{slug}.contract.md",
+        root / "tests" / "story_regression" / f"test_story_{slug}.py",
+    ]
+
+
+def _replace_story_section(text: str, new_story: str) -> str:
+    replacement = f"## Story\n\n{new_story.strip()}\n"
+    pattern = re.compile(r"## Story\s*\n.*?(?=\n## |\Z)", re.S)
+    if not pattern.search(text):
+        return text.rstrip() + "\n\n" + replacement
+    return pattern.sub(replacement, text, count=1)
+
+
+def _apply_saved_story_change(plan: IntentPlan, root: Path) -> _WorkflowOutcome:
+    if plan.story_action not in {"amend", "delete"}:
+        return _WorkflowOutcome(True, "No saved-experience change was requested.")
+    if not plan.matched_stories:
+        return _WorkflowOutcome(
+            False, "No saved experience matched this request."
+        )
+    changed: List[str] = []
+    for relative in plan.matched_stories:
+        story_path = (root / relative).resolve()
+        try:
+            story_path.relative_to(root.resolve())
+        except ValueError:
+            return _WorkflowOutcome(False, f"Saved experience path is outside the project: {relative}")
+        if not story_path.is_file():
+            return _WorkflowOutcome(False, f"Saved experience was not found: {relative}")
+        if plan.story_action == "delete":
+            for related in _story_related_paths(story_path, root):
+                if related.is_file():
+                    related.unlink()
+                    changed.append(_relative(related, root))
+        else:
+            original = story_path.read_text(encoding="utf-8")
+            _atomic_write_text(
+                story_path, _replace_story_section(original, plan.original_request)
+            )
+            changed.append(_relative(story_path, root))
+    verb = "Removed" if plan.story_action == "delete" else "Updated"
+    return _WorkflowOutcome(
+        True, f"{verb} saved experience.", changed_files=tuple(changed)
+    )
+
+
 def _story_title(plan: IntentPlan) -> str:
     if (
         not Path(plan.title).is_absolute()
@@ -541,6 +598,7 @@ def apply_intent(
     create_story: bool = True,
     run_sync: bool = True,
     approved_story_sha256: Optional[str] = None,
+    require_story_approval: bool = False,
     quiet: bool = False,
     verbose: bool = False,
     _architecture_runner: Optional[_ArchitectureRunner] = None,
@@ -567,6 +625,8 @@ def apply_intent(
         raise ValueError("Approved story SHA-256 must be 64 lowercase hexadecimal characters.")
     if approved_story_sha256 and not create_story:
         raise ValueError("--approve-story cannot be combined with --no-story.")
+    if require_story_approval and not create_story:
+        raise ValueError("--require-story-approval cannot be combined with --no-story.")
     if plan.project_kind == "conventional_brownfield" and not characterized:
         raise ValueError(
             "Brownfield apply requires characterization evidence; run the existing "
@@ -679,7 +739,23 @@ def apply_intent(
 
         command_runner = _command_runner or _default_command_runner
         prompt_paths = _candidate_prompt_paths(plan, changed_files)
-        if plan.story_recommended and create_story:
+        if plan.story_action in {"amend", "delete"}:
+            story_outcome = _apply_saved_story_change(plan, root)
+            steps.append(_step("story", story_outcome))
+            changed_files.extend(story_outcome.changed_files)
+            if not story_outcome.success:
+                raise RuntimeError(story_outcome.message)
+            steps.append(
+                _step(
+                    "story_regression",
+                    _WorkflowOutcome(
+                        True,
+                        "Existing story checks were left in place after the saved experience change.",
+                    ),
+                    skipped=True,
+                )
+            )
+        elif plan.story_recommended and create_story:
             if not prompt_paths:
                 raise RuntimeError(
                     "Story coverage was recommended, but no changed or candidate prompt "
@@ -711,7 +787,9 @@ def apply_intent(
                 changed_files.append(_relative(story_path, root))
 
             story_sha256 = hashlib.sha256(story_path.read_bytes()).hexdigest()
-            if approved_story_sha256 != story_sha256:
+            if (
+                require_story_approval or approved_story_sha256 is not None
+            ) and approved_story_sha256 != story_sha256:
                 approval_required = {
                     "kind": "story",
                     "path": _relative(story_path, root),
