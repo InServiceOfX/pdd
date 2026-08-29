@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from rich.console import Console
 
+from . import local_work_items
 from .agentic_e2e_fix_orchestrator import run_agentic_e2e_fix_orchestrator
 
 
@@ -27,13 +28,27 @@ _BRANCH_PATTERNS = (
 _WORKTREE_PREFIXES = ("fix", "bug", "test", "change")
 
 
-def _check_gh_cli() -> bool:
-    """Return True when the GitHub CLI is available on PATH."""
+def _check_gh_cli(issue_ref: str = "") -> bool:
+    """Check that the tooling needed to resolve *issue_ref* is available.
+
+    A local work item reference (``local:12``) resolves from ``.pdd/`` and
+    needs no GitHub CLI, so the check passes unconditionally for those.
+    """
+    if local_work_items.is_local_ref(issue_ref):
+        return True
     return shutil.which("gh") is not None
 
 
 def _parse_github_url(url: str) -> Optional[Tuple[str, str, int]]:
     """Parse a GitHub issue URL into owner, repo, and issue number."""
+    local_number = local_work_items.parse_local_ref(url)
+    if local_number is not None:
+        return (
+            local_work_items.LOCAL_OWNER,
+            local_work_items.local_repo_name(Path.cwd()),
+            local_number,
+        )
+
     match = _GITHUB_ISSUE_URL_RE.match(url.strip())
     if not match:
         return None
@@ -62,7 +77,16 @@ def _fetch_issue_data(
     repo: str,
     number: int,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    """Fetch GitHub issue metadata via `gh api`."""
+    """Fetch GitHub issue metadata via `gh api`, or a local work item."""
+    if local_work_items.is_local_owner(owner):
+        try:
+            item = local_work_items.load_work_item(Path.cwd(), number)
+        except Exception as exc:
+            return None, f"Failed to read local work item: {exc}"
+        if item is None:
+            return None, f"Local work item {number} not found"
+        return local_work_items.github_shaped_issue(item), None
+
     command = [
         "gh",
         "api",
@@ -107,6 +131,18 @@ def _fetch_issue_comments(comments_url: str) -> str:
     """Fetch and format all issue comments for prompt context."""
     if not comments_url:
         return ""
+
+    local_number = local_work_items.parse_local_comments_url(comments_url)
+    if local_number is not None:
+        try:
+            comments = local_work_items.list_comments(Path.cwd(), local_number) or []
+        except Exception:
+            return ""
+        return "\n".join(
+            f"--- Comment by {(c.get('user') or {}).get('login', 'Unknown')} ---\n"
+            f"{c.get('body', '')}\n"
+            for c in comments
+        )
 
     command = [
         "gh",
@@ -270,7 +306,7 @@ def run_agentic_e2e_fix(
     clean_restart: bool = False,
 ) -> Tuple[bool, str, float, str, List[str]]:
     """Run the agentic E2E fix workflow for a GitHub issue."""
-    if not _check_gh_cli():
+    if not _check_gh_cli(issue_url):
         message = "gh CLI not found. Please install GitHub CLI to use this feature."
         if not quiet:
             console.print(f"[red]{message}[/red]")

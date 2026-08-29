@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, Tuple
 import click
 from rich.console import Console
 
+from pdd import local_work_items
 from ..core.errors import handle_error
 from ..operation_log import log_operation
 from ..track_cost import track_cost
@@ -20,8 +21,13 @@ _USER_STORY_RE = re.compile(r"^story__.+\.md$", re.IGNORECASE)
 
 
 def _is_issue_url(value: str) -> bool:
-    """Return True when the first CLI argument is a GitHub issue URL."""
+    """Return True when the first CLI argument references an agentic work item.
+
+    These predicates gate *routing* into the agentic workflow, not GitHub-ness, so a local work item reference (``local:12``) is accepted too.
+    """
     candidate = value.strip()
+    if local_work_items.is_local_ref(candidate):
+        return True
     return bool(_GITHUB_ISSUE_RE.match(candidate))
 
 

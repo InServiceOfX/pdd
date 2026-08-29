@@ -1,0 +1,72 @@
+<pdd-reason>Terminal surface for local work items, so a human can open, inspect, and steer an agentic run without GitHub.</pdd-reason>
+
+<pdd-interface>
+{
+  "type": "module",
+  "module": {
+    "functions": [
+      {"name": "work", "signature": "() -> None", "returns": "None"},
+      {"name": "work_new", "signature": "(title: str, body: Optional[str], body_file: Optional[Path], labels: tuple, as_json: bool) -> None", "returns": "None"},
+      {"name": "work_list", "signature": "(state: str, as_json: bool) -> None", "returns": "None"},
+      {"name": "work_show", "signature": "(number: int, as_json: bool) -> None", "returns": "None"},
+      {"name": "work_comment", "signature": "(number: int, text: Optional[str], body_file: Optional[Path], author: str) -> None", "returns": "None"},
+      {"name": "work_close", "signature": "(number: int) -> None", "returns": "None"},
+      {"name": "work_reopen", "signature": "(number: int) -> None", "returns": "None"}
+    ],
+    "exports": [{"name": "work_cli", "type": "click.Group"}]
+  }
+}
+</pdd-interface>
+
+<pdd-dependency>local_work_items_python.prompt</pdd-dependency>
+
+% You are an expert Python engineer. Write `pdd/commands/work.py`.
+
+<include>context/python_preamble.prompt</include>
+
+% Role & Scope
+  Implement the `pdd work` Click group: the human surface for the local work
+  items defined in `pdd/local_work_items.py`. It creates a request, lists and
+  shows work items, appends comments, and opens or closes an item. It MUST NOT
+  invoke `gh`, reach the network, or run any workflow itself.
+
+% Non-responsibilities
+  Storage layout, id allocation, and GitHub-shaped projection belong to
+  `pdd.local_work_items`. Dispatching `local:N` into a workflow belongs to the
+  routing predicates in the agentic command modules.
+
+<contract_rules>
+R1 - Discoverable pairing with the workflows
+The group help MUST state that a work item is the GitHub-free replacement for
+an issue and MUST show the `local:<number>` reference form, because a user who
+has just created one needs to know how to run a workflow against it. `work new`
+MUST print the created reference and an example invocation.
+
+R2 - Three ways in, one limit
+`new` and `comment` MUST accept their text from an inline option, from a file,
+or from standard input when neither is given and stdin is not a TTY. Supplying
+both an inline value and a file MUST fail with a message saying to use one, not
+both. Body text longer than 200,000 characters MUST be refused.
+
+R3 - Comments are the steering channel
+`work comment` MUST refuse an empty or whitespace-only body, and its help MUST
+say that a running workflow drains new comments as mid-run steering — that is
+the reason the command exists, not merely record-keeping.
+
+R4 - Missing items fail loudly
+`show`, `comment`, `close`, and `reopen` MUST fail with a message naming the
+missing number and pointing at `pdd work list`, rather than creating an item or
+exiting successfully.
+
+R5 - Machine-readable output
+`new`, `list`, and `show` MUST support `--json`, emitting the stored records so
+an AI harness can drive the command without scraping human-formatted output.
+
+R6 - State filtering
+`list` MUST filter by `open`, `closed`, or `all` (default `all`) and MUST print
+a helpful message, not an empty result, when the store holds nothing.
+</contract_rules>
+
+% Deliverables
+- Code: `pdd/commands/work.py`
+- Registered on the root CLI group in `pdd/commands/__init__.py` as `work_cli`.

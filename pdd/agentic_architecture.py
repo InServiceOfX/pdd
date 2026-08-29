@@ -17,6 +17,7 @@ from rich.console import Console
 
 # Internal imports
 from . import DEFAULT_STRENGTH, DEFAULT_TIME
+from . import local_work_items
 from .agentic_architecture_orchestrator import run_agentic_architecture_orchestrator
 from .architecture_registry import extract_modules, find_git_toplevel, find_project_root
 from .incremental_prd_architecture import INCREMENTAL_STATUS_MARKER
@@ -73,6 +74,8 @@ def _is_github_issue_url(url: str) -> bool:
     Returns:
         True if the URL matches the GitHub issue pattern, False otherwise.
     """
+    if local_work_items.is_local_ref(url):
+        return True
     return _parse_github_url(url) is not None
 
 
@@ -91,6 +94,14 @@ def _parse_github_url(url: str) -> Optional[Tuple[str, str, int]]:
     Returns:
         Tuple of (owner, repo, issue_number) if successful, None otherwise.
     """
+    local_number = local_work_items.parse_local_ref(url)
+    if local_number is not None:
+        return (
+            local_work_items.LOCAL_OWNER,
+            local_work_items.local_repo_name(Path.cwd()),
+            local_number,
+        )
+
     pattern = r"(?:https?://)?(?:www\.)?github\.com/([^/]+)/([^/]+)/issues/(\d+)"
     match = re.search(pattern, url)
     if match:
@@ -99,8 +110,14 @@ def _parse_github_url(url: str) -> Optional[Tuple[str, str, int]]:
     return None
 
 
-def _check_gh_cli() -> bool:
-    """Check if gh CLI tool is available on the PATH."""
+def _check_gh_cli(issue_ref: str = "") -> bool:
+    """Check that the tooling needed to resolve *issue_ref* is available.
+
+    A local work item reference (``local:12``) resolves from ``.pdd/`` and
+    needs no GitHub CLI, so the check passes unconditionally for those.
+    """
+    if local_work_items.is_local_ref(issue_ref):
+        return True
     return shutil.which("gh") is not None
 
 
@@ -114,6 +131,13 @@ def _run_gh_command(args: List[str]) -> Tuple[bool, str]:
     Returns:
         Tuple of (success boolean, output string).
     """
+    # Local work items answer ``gh api <path>`` requests from ``.pdd/`` so no
+    # subprocess (and no network) is involved.
+    if len(args) >= 2 and args[0] == "api":
+        served = local_work_items.serve_gh_api(Path.cwd(), args[1])
+        if served is not None:
+            return True, served
+
     try:
         result = subprocess.run(
             ["gh"] + args,
@@ -524,7 +548,7 @@ def run_agentic_architecture(
         resolved_project_root = find_project_root(cwd)
 
     # 1. Check gh CLI
-    if not _check_gh_cli():
+    if not _check_gh_cli(issue_url):
         return False, "gh CLI not found. Please install GitHub CLI.", 0.0, "", []
 
     # 2. Parse URL
@@ -659,7 +683,7 @@ def run_incremental_architecture(
     issue_number: Optional[int] = None
 
     if _is_github_issue_url(prd_source):
-        if not _check_gh_cli():
+        if not _check_gh_cli(prd_source):
             return False, "gh CLI not found. Please install GitHub CLI.", 0.0, "", []
 
         parsed = _parse_github_url(prd_source)

@@ -48,6 +48,10 @@ a behavioral test. Use `pdd change` for explicit source-truth/spec/product
 changes with no current runtime failure to reproduce (`change → sync` after
 the source-truth change lands).
 
+Each of these also accepts a **local work item** in place of an issue URL
+(`pdd bug local:1`), so the whole agentic surface runs without GitHub — see
+[docs/local_work_items.md](docs/local_work_items.md).
+
 For prompt-based workflows, the **`sync`** command automates the complete development cycle with intelligent decision-making, real-time visual feedback, and sophisticated state management.
 
 ## Whitepaper
@@ -67,6 +71,11 @@ For a step-by-step methodology on turning a GitHub issue into a durable, human-v
 For the ordinary-language human surface, the four standalone/monorepo adoption
 scenarios, and a precise explanation of versioned prompts, tests, and
 agent-drafted stories, see [docs/intent.md](docs/intent.md).
+
+To run the agentic workflows with no GitHub issue, no `gh`, and no network —
+`pdd work new` opens a local work item, `pdd bug local:1` runs against it, and
+`pdd work comment 1 --text "..."` steers the run mid-flight — see
+[docs/local_work_items.md](docs/local_work_items.md).
 
 For pre-merge prompt and user-story quality (vague terms, vocabulary, optional LLM review), see [docs/prompt_lint.md](docs/prompt_lint.md).
 

@@ -17,6 +17,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Tuple
 from rich import print as rprint
 from rich.markup import escape as rich_escape
 
+from . import local_work_items
 from .detect_change import detect_change
 from .get_extension import get_extension
 
@@ -952,6 +953,17 @@ def resolve_issue_source(  # pylint: disable=too-many-return-statements
             return None, None, None
         title = _issue_title_from_markdown(text) or candidate.stem
         return title, text, candidate.name
+
+    local_number = local_work_items.parse_local_ref(issue)
+    if local_number is not None:
+        item = local_work_items.load_work_item(Path.cwd(), local_number)
+        if item is None:
+            return None, None, None
+        return (
+            str(item.get("title", "") or ""),
+            str(item.get("body", "") or ""),
+            local_work_items.format_local_ref(local_number),
+        )
 
     url_match = _GITHUB_ISSUE_URL_RE.match(issue)
     if url_match:

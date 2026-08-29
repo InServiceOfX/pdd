@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 
 from rich.console import Console
 
+from . import local_work_items
 from .agentic_test_orchestrator import run_agentic_test_orchestrator
 from . import cmd_test_main
 
@@ -26,8 +27,14 @@ from . import cmd_test_main
 console = Console()
 
 
-def _check_gh_cli() -> bool:
-    """Check if the GitHub CLI (gh) is installed and available."""
+def _check_gh_cli(issue_ref: str = "") -> bool:
+    """Check that the tooling needed to resolve *issue_ref* is available.
+
+    A local work item reference (``local:12``) resolves from ``.pdd/`` and
+    needs no GitHub CLI, so the check passes unconditionally for those.
+    """
+    if local_work_items.is_local_ref(issue_ref):
+        return True
     return shutil.which("gh") is not None
 
 
@@ -39,6 +46,14 @@ def _parse_github_url(url: str) -> Optional[Tuple[str, str, int]]:
     - https://www.github.com/{owner}/{repo}/issues/{number}
     - github.com/{owner}/{repo}/issues/{number}
     """
+    local_number = local_work_items.parse_local_ref(url)
+    if local_number is not None:
+        return (
+            local_work_items.LOCAL_OWNER,
+            local_work_items.local_repo_name(Path.cwd()),
+            local_number,
+        )
+
     # Ensure scheme exists for urlparse to correctly identify netloc vs path
     if not url.startswith("http://") and not url.startswith("https://"):
         url = "https://" + url
@@ -71,6 +86,28 @@ def _fetch_issue_data(owner: str, repo: str, number: int) -> Tuple[Optional[Dict
     Fetch issue data and comments using the GitHub CLI.
     Returns (issue_data_dict, error_message).
     """
+    if local_work_items.is_local_owner(owner):
+        try:
+            item = local_work_items.load_work_item(Path.cwd(), number)
+        except Exception as exc:
+            return None, f"Failed to read local work item: {exc}"
+        if item is None:
+            return None, f"Local work item {number} not found"
+        issue_json = local_work_items.github_shaped_issue(item)
+        labels = [l.get("name", "") for l in issue_json.get("labels", [])]
+        comments = local_work_items.list_comments(Path.cwd(), number) or []
+        comments_text = ""
+        if comments:
+            comments_text = "\n\n--- Comments ---\n"
+            for comment in comments:
+                user = (comment.get("user") or {}).get("login", "Unknown")
+                comments_text += f"\nUser: {user}\n{comment.get('body', '')}\n"
+        meta_info = f"State: {issue_json.get('state', 'open')}\nLabels: {', '.join(labels)}\n"
+        issue_json["full_content_with_comments"] = (
+            meta_info + "\n" + (issue_json.get("body") or "") + comments_text
+        )
+        return issue_json, None
+
     try:
         # Fetch issue details
         cmd = [
@@ -187,7 +224,7 @@ def run_agentic_test(
         (success, message, total_cost, model_used, changed_files)
     """
     # 1. Check prerequisites
-    if not _check_gh_cli():
+    if not _check_gh_cli(issue_url):
         msg = "GitHub CLI (gh) not found. Please install it: https://cli.github.com/"
         if not quiet:
             console.print(f"[red]{msg}[/red]")

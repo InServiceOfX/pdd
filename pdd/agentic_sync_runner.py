@@ -17,6 +17,8 @@ import secrets
 import shutil
 import signal
 import subprocess
+
+from . import local_work_items
 import sys
 import tempfile
 import threading
@@ -193,6 +195,13 @@ def _run_gh_command(args: List[str], timeout: int = 30) -> Tuple[bool, str]:
     Returns:
         Tuple of (success, output). Output is stdout on success, stderr on failure.
     """
+    # Local work items answer ``gh api <path>`` requests from ``.pdd/`` so no
+    # subprocess (and no network) is involved.
+    if len(args) >= 2 and args[0] == "api":
+        served = local_work_items.serve_gh_api(Path.cwd(), args[1])
+        if served is not None:
+            return True, served
+
     try:
         result = subprocess.run(
             ["gh"] + list(args),

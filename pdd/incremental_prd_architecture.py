@@ -21,6 +21,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tupl
 
 from pydantic import BaseModel, Field, StrictInt
 
+from . import local_work_items
 from . import DEFAULT_STRENGTH, DEFAULT_TIME
 from .architecture_registry import extract_modules
 from .architecture_sync import generate_tags_from_architecture
@@ -1292,6 +1293,18 @@ def _read_prd_source(
 
 
 def _read_github_issue_prd(issue_url: str) -> str:
+    local_number = local_work_items.parse_local_ref(issue_url)
+    if local_number is not None:
+        item = local_work_items.load_work_item(Path.cwd(), local_number)
+        if item is None:
+            raise ValueError(f"Local work item {local_number} not found")
+        parts = [f"# {str(item.get('title', '')).strip()}", str(item.get("body", "") or "")]
+        for comment in item.get("comments", []) or []:
+            body = str(comment.get("body", "") or "")
+            if body and INCREMENTAL_STATUS_MARKER not in body:
+                parts.append(body)
+        return "\n\n".join(part for part in parts if part)
+
     result = subprocess.run(
         ["gh", "issue", "view", issue_url, "--json", "title,body,comments"],
         capture_output=True,

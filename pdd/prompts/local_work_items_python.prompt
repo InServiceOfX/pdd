@@ -1,0 +1,125 @@
+<pdd-reason>Filesystem-backed work items that replace the GitHub issue in every agentic workflow, so a project can run bug/fix/change/test/sync with no `gh`, no network, and nothing published.</pdd-reason>
+
+<pdd-interface>
+{
+  "type": "module",
+  "module": {
+    "constants": [
+      {"name": "LOCAL_OWNER", "type": "str"}
+    ],
+    "exceptions": [
+      {"name": "LocalWorkItemError", "base": "RuntimeError"}
+    ],
+    "functions": [
+      {"name": "parse_local_ref", "signature": "(value: Any) -> Optional[int]", "returns": "Optional[int]"},
+      {"name": "is_local_ref", "signature": "(value: Any) -> bool", "returns": "bool"},
+      {"name": "format_local_ref", "signature": "(number: int) -> str", "returns": "str"},
+      {"name": "is_local_owner", "signature": "(repo_owner: Any) -> bool", "returns": "bool"},
+      {"name": "local_repo_name", "signature": "(project_root: Path) -> str", "returns": "str"},
+      {"name": "local_comments_url", "signature": "(number: int) -> str", "returns": "str"},
+      {"name": "parse_local_comments_url", "signature": "(url: Any) -> Optional[int]", "returns": "Optional[int]"},
+      {"name": "is_local_comments_url", "signature": "(url: Any) -> bool", "returns": "bool"},
+      {"name": "local_only_enabled", "signature": "() -> bool", "returns": "bool"},
+      {"name": "store_dir", "signature": "(project_root: Path) -> Path", "returns": "Path"},
+      {"name": "create_work_item", "signature": "(project_root: Path, title: str, body: str = '', *, labels: Optional[List[str]] = None, author: str = 'local') -> Dict[str, Any]", "returns": "Dict[str, Any]"},
+      {"name": "load_work_item", "signature": "(project_root: Path, number: int) -> Optional[Dict[str, Any]]", "returns": "Optional[Dict[str, Any]]"},
+      {"name": "list_work_items", "signature": "(project_root: Path) -> List[Dict[str, Any]]", "returns": "List[Dict[str, Any]]"},
+      {"name": "update_work_item", "signature": "(project_root: Path, number: int, *, title: Optional[str] = None, body: Optional[str] = None, state: Optional[str] = None, labels: Optional[List[str]] = None) -> Optional[Dict[str, Any]]", "returns": "Optional[Dict[str, Any]]"},
+      {"name": "add_comment", "signature": "(project_root: Path, number: int, body: str, *, author: str = 'local') -> Optional[Dict[str, Any]]", "returns": "Optional[Dict[str, Any]]"},
+      {"name": "edit_comment", "signature": "(project_root: Path, number: int, comment_id: int, body: str) -> bool", "returns": "bool"},
+      {"name": "delete_comment", "signature": "(project_root: Path, number: int, comment_id: int) -> bool", "returns": "bool"},
+      {"name": "edit_comment_by_id", "signature": "(project_root: Path, comment_id: int, body: str) -> bool", "returns": "bool"},
+      {"name": "delete_comment_by_id", "signature": "(project_root: Path, comment_id: int) -> bool", "returns": "bool"},
+      {"name": "find_comment_item", "signature": "(project_root: Path, comment_id: int) -> Optional[int]", "returns": "Optional[int]"},
+      {"name": "find_state_comments", "signature": "(project_root: Path, number: int, marker: str) -> List[Dict[str, Any]]", "returns": "List[Dict[str, Any]]"},
+      {"name": "list_comments", "signature": "(project_root: Path, number: int, *, since: Optional[str] = None) -> Optional[List[Dict[str, Any]]]", "returns": "Optional[List[Dict[str, Any]]]"},
+      {"name": "github_shaped_comment", "signature": "(comment: Dict[str, Any]) -> Dict[str, Any]", "returns": "Dict[str, Any]"},
+      {"name": "github_shaped_issue", "signature": "(item: Dict[str, Any]) -> Dict[str, Any]", "returns": "Dict[str, Any]"},
+      {"name": "serve_gh_api", "signature": "(project_root: Path, path: str) -> Optional[str]", "returns": "Optional[str]"},
+      {"name": "resolve_local_ref", "signature": "(project_root: Path, value: str) -> Optional[Dict[str, Any]]", "returns": "Optional[Dict[str, Any]]"}
+    ]
+  }
+}
+</pdd-interface>
+
+% You are an expert Python engineer. Write `pdd/local_work_items.py`.
+
+<include>context/python_preamble.prompt</include>
+
+% Role & Scope
+  Provide the local, filesystem-backed work item that stands in for a GitHub
+  issue across PDD's agentic workflows. A GitHub issue played three roles at
+  once — the request the workflow implements, the store for resumable
+  multi-step state, and the channel a human uses to steer a run mid-flight —
+  and this module must satisfy all three from disk alone. It MUST NOT invoke
+  `gh`, open a network connection, or import any other `pdd` module.
+
+% Non-responsibilities
+  Routing a CLI argument to a workflow, deciding when a workflow runs, and
+  rendering work items for the terminal all belong to `pdd/commands/work.py`
+  and the orchestrators. This module only stores and projects data.
+
+<contract_rules>
+R1 - Reference syntax
+`parse_local_ref` MUST accept `local:N`, `local#N`, `local/N`, `work:N`,
+`work-item:N`, and `workitem:N`, case-insensitively and tolerating surrounding
+whitespace, returning the positive integer N. It MUST return None for a GitHub
+URL, a prompt filename, a non-string, a missing number, and any N <= 0, so a
+routing predicate can use it without misclassifying an ordinary argument.
+
+R2 - Routing discriminator
+A local work item MUST be addressable as the triple
+(`LOCAL_OWNER`, <project name>, <number>), because every deep call site in the
+agentic layer already receives repo_owner/repo_name/issue_number. `is_local_owner`
+is the discriminator those call sites branch on. This module MUST NOT require a
+process-global "local mode" flag to answer that question.
+
+R3 - Storage layout and durability
+Work items live under `<project_root>/.pdd/work_items/`, one JSON file per item
+(`item_<n>.json`) plus an `index.json` holding the allocators. Every write MUST
+be atomic (write to a temporary file, then rename) so an interrupted run cannot
+leave a half-written item. A read error MUST raise `LocalWorkItemError` naming
+the path rather than returning a silently empty item.
+
+R4 - Monotonic comment ids
+Comment ids MUST be allocated from a persisted counter and MUST NEVER be reused,
+including after a comment is deleted. Mid-run steering drains comments whose id
+exceeds a stored cursor, so a reused id would silently replay an already-drained
+instruction. The index MUST also record which work item owns each comment id,
+because the state helpers address comments by id alone.
+
+R5 - Shape compatibility
+`github_shaped_issue` MUST emit every field existing callers read off a
+`gh api .../issues/N` payload: `number`, `title`, `body`, `state`,
+`labels` as `[{"name": ...}]`, `user.login`, `comments_url`, `comments`,
+`created_at`, `updated_at`. `github_shaped_comment` MUST emit `id`,
+`user.login`, `body`, `created_at`, `updated_at`. Timestamps MUST use GitHub's
+ISO-8601 `Z` form so the existing timestamp parsers accept them unchanged.
+
+R6 - `since` filtering matches GitHub
+`list_comments` MUST return only comments whose activity timestamp (updated_at,
+falling back to created_at) is strictly after `since`, mirroring the GitHub API
+parameter. It MUST return None — not an empty list — when the work item does
+not exist, so callers can distinguish "no such item" from "no comments".
+
+R7 - gh-shaped request service
+`serve_gh_api` MUST answer `repos/local/<repo>/issues/<n>`,
+`repos/local/<repo>/issues/<n>/comments`, and the sentinel
+`pdd-local://work-items/<n>/comments` with the JSON text `gh` would have
+printed, and MUST return None for any other path so a caller falls through to
+the real `gh` unchanged.
+
+R8 - Local-only guard
+`local_only_enabled` MUST report whether `PDD_LOCAL_ONLY` is set to a truthy
+value. When it is, the agentic layer reports the `gh` binary as absent, so
+every GitHub helper takes its existing "no gh" branch. This function MUST NOT
+itself perform that suppression.
+
+R9 - State validity
+`update_work_item` MUST reject any state other than `open` or `closed`, MUST
+refresh `updated_at` only when something actually changed, and MUST return None
+for a missing item rather than creating one.
+</contract_rules>
+
+% Deliverables
+- Code: `pdd/local_work_items.py`

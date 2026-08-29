@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from rich.console import Console
 
 # Internal imports
+from . import local_work_items
 from .agentic_bug_orchestrator import run_agentic_bug_orchestrator
 from .bug_main import bug_main
 
@@ -34,8 +35,14 @@ console = Console()
 __all__ = ["run_agentic_bug"]
 
 
-def _check_gh_cli() -> bool:
-    """Check if the GitHub CLI (gh) is installed and available on PATH."""
+def _check_gh_cli(issue_ref: str = "") -> bool:
+    """Check that the tooling needed to resolve *issue_ref* is available.
+
+    A local work item reference (``local:12``) needs no GitHub CLI at all, so
+    the check passes unconditionally for those.
+    """
+    if local_work_items.is_local_ref(issue_ref):
+        return True
     return shutil.which("gh") is not None
 
 
@@ -54,6 +61,15 @@ def _parse_github_url(url: str) -> Optional[Tuple[str, str, int]]:
     Returns:
         Tuple of (owner, repo, issue_number) if successful, else None.
     """
+    # Local work item reference (``local:12``) — no network identity needed.
+    local_number = local_work_items.parse_local_ref(url)
+    if local_number is not None:
+        return (
+            local_work_items.LOCAL_OWNER,
+            local_work_items.local_repo_name(Path.cwd()),
+            local_number,
+        )
+
     # Remove protocol and www if present
     clean_url = url.replace("https://", "").replace("http://", "").replace("www.", "")
     
@@ -85,6 +101,15 @@ def _fetch_issue_data(owner: str, repo: str, number: int) -> Tuple[Optional[Dict
         - data_dict: JSON response from GitHub API if successful.
         - error_message: Error string if failed.
     """
+    if local_work_items.is_local_owner(owner):
+        try:
+            item = local_work_items.load_work_item(Path.cwd(), number)
+        except Exception as exc:
+            return None, f"Failed to read local work item: {exc}"
+        if item is None:
+            return None, f"Local work item {number} not found"
+        return local_work_items.github_shaped_issue(item), None
+
     cmd = [
         "gh", "api",
         f"repos/{owner}/{repo}/issues/{number}",
@@ -113,6 +138,18 @@ def _fetch_comments(comments_url: str) -> str:
     Returns:
         Concatenated string of comments formatted as "User: Comment".
     """
+    local_number = local_work_items.parse_local_comments_url(comments_url)
+    if local_number is not None:
+        try:
+            comments = local_work_items.list_comments(Path.cwd(), local_number) or []
+        except Exception:
+            return ""
+        return "\n".join(
+            f"--- Comment by {(c.get('user') or {}).get('login', 'Unknown')} ---\n"
+            f"{c.get('body', '')}\n"
+            for c in comments
+        )
+
     # The comments_url from API is full URL like https://api.github.com/repos/...
     # gh api expects path relative to api root or full URL.
     cmd = ["gh", "api", comments_url, "--paginate"]
@@ -150,7 +187,12 @@ def _ensure_repo_context(owner: str, repo: str, cwd: Path, quiet: bool = False) 
     # Check if .git exists
     if (cwd / ".git").exists():
         return True
-        
+
+    # A local work item names no remote to clone from; the project on disk is
+    # the only repository involved.
+    if local_work_items.is_local_owner(owner):
+        return True
+
     # Attempt clone
     repo_url = f"https://github.com/{owner}/{repo}.git"
     if not quiet:
@@ -239,7 +281,7 @@ def run_agentic_bug(
             return False, f"Manual mode failed: {e}", 0.0, "", []
 
     # 2. Validate Environment
-    if not _check_gh_cli():
+    if not _check_gh_cli(issue_url):
         msg = "gh CLI not found. Please install GitHub CLI."
         if not quiet:
             console.print(f"[red]{msg}[/red]")

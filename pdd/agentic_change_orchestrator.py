@@ -41,6 +41,7 @@ from pdd.agentic_common import (
     apply_clarification_steers_on_resume,
     ensure_issue_steer_cursor_seeded,
 )
+from pdd import local_work_items
 from pdd.load_prompt_template import load_prompt_template
 from pdd.sync_order import (
     # Retained as stable patch points for orchestration callers/tests while
@@ -369,6 +370,11 @@ def _pr_number_from_url(pr_url: str, repo_owner: str, repo_name: str) -> Optiona
     return match.group(1) if match else None
 
 
+def _local_has_no_pull_requests(repo_owner: str) -> bool:
+    """Local work items have no remote pull requests to discover."""
+    return local_work_items.is_local_owner(repo_owner)
+
+
 def _gh_pr_list_candidates(
     base_args: Sequence[str], cwd: Optional[Path] = None
 ) -> List[dict]:
@@ -453,6 +459,8 @@ def _open_pr_for_head_branch(
     cwd: Path,
 ) -> Optional[dict]:
     """Return open PR metadata for the exact head branch, if one exists."""
+    if _local_has_no_pull_requests(repo_owner):
+        return None
     data = _gh_pr_list_candidates(
         [
             "gh",
@@ -2146,6 +2154,13 @@ def _fetch_issue_updated_at(repo_owner: str, repo_name: str, issue_number: int) 
     Used after a clarification stop to capture the timestamp AFTER
     the bot's own comment, so stale detection doesn't false-trigger.
     """
+    if local_work_items.is_local_owner(repo_owner):
+        try:
+            item = local_work_items.load_work_item(Path.cwd(), issue_number)
+        except Exception:
+            return ""
+        return str(item.get("updated_at") or "") if item else ""
+
     try:
         result = subprocess.run(
             ["gh", "api", f"repos/{repo_owner}/{repo_name}/issues/{issue_number}",
@@ -2314,6 +2329,8 @@ def _check_existing_pr(repo_owner: str, repo_name: str, issue_number: int) -> Op
     also returns unrelated heads like ``change/issue-{N}0``; the results are
     filtered precisely in Python.
     """
+    if _local_has_no_pull_requests(repo_owner):
+        return None
     canonical = f"change/issue-{issue_number}"
     fallback_prefix = f"{canonical}-job-"
     try:
@@ -2343,6 +2360,8 @@ def _check_existing_pr_candidates(
     issue_number: int,
 ) -> List[dict]:
     """Return open PR metadata candidates for canonical/fallback issue branches."""
+    if _local_has_no_pull_requests(repo_owner):
+        return []
     canonical = f"change/issue-{issue_number}"
     fallback_prefix = f"{canonical}-job-"
     data = _gh_pr_list_candidates(

@@ -14,6 +14,7 @@ from pathlib import Path
 import click
 from typing import Optional, Tuple, List, Dict, Any
 
+from pdd import local_work_items
 from ..detect_change_main import detect_change_main
 from ..conflicts_main import conflicts_main
 from ..bug_main import bug_main
@@ -205,7 +206,12 @@ def _scope_manifest_metadata_matches(scope: _StoryScopeManifest) -> bool:
 
 
 def _is_github_issue_url(value: str) -> bool:
-    """Return True when value is a GitHub issue URL."""
+    """Return True when value references an agentic work item.
+
+    These predicates gate *routing* into the agentic workflow, not GitHub-ness, so a local work item reference (``local:12``) is accepted too.
+    """
+    if local_work_items.is_local_ref(value):
+        return True
     return bool(_GITHUB_ISSUE_RE.match(value.strip()))
 
 

@@ -43,6 +43,8 @@ from enum import Enum
 
 from rich.console import Console
 
+from pdd import local_work_items
+from pdd.local_work_items import is_local_owner, local_only_enabled
 from pdd.routing_policy import (
     canonicalize_claude_cli_model,
     CODEX_MODEL_DEFAULT,
@@ -3595,6 +3597,13 @@ def _find_cli_binary(name: str, config: Optional[Dict[str, Any]] = None) -> Opti
     Returns:
         Full path to the binary if found, None otherwise
     """
+    # Local-only mode: report ``gh`` as absent so every GitHub helper takes its
+    # existing "no gh" branch instead of shelling out. This is the backstop
+    # that guarantees a local-only run never invokes the GitHub CLI, even on a
+    # code path that predates local work items.
+    if name == "gh" and local_only_enabled():
+        return None
+
     # Strategy 1: Check .pddrc config override
     if config is None:
         config = _load_agentic_config()
@@ -8816,6 +8825,19 @@ def _find_state_comment(
     """
     Returns (comment_id, state_dict) if found, else None.
     """
+    if is_local_owner(repo_owner):
+        marker = _build_state_marker(workflow_type, issue_number)
+        best: Optional[Tuple[int, Dict]] = None
+        for comment in local_work_items.find_state_comments(cwd, issue_number, marker):
+            state = _parse_state_from_comment(
+                str(comment.get("body", "") or ""), workflow_type, issue_number
+            )
+            if state:
+                cid = int(comment.get("id", 0))
+                if best is None or cid > best[0]:
+                    best = (cid, state)
+        return best
+
     if not _find_cli_binary("gh"):
         return None
 
@@ -8870,6 +8892,14 @@ def _find_all_state_comments(
     restart pre-clear, or save's first-write dedupe path) must use this
     helper, not the singleton variant.
     """
+    if is_local_owner(repo_owner):
+        marker = _build_state_marker(workflow_type, issue_number)
+        return [
+            int(comment["id"])
+            for comment in local_work_items.find_state_comments(cwd, issue_number, marker)
+            if comment.get("id") is not None
+        ]
+
     if not _find_cli_binary("gh"):
         return []
 
@@ -8898,6 +8928,12 @@ def _find_all_state_comments(
 
 def _github_delete_comment(repo_owner: str, repo_name: str, comment_id: int, cwd: Path) -> bool:
     """Delete one issue comment by id via ``gh api``. Best-effort, never raises."""
+    if is_local_owner(repo_owner):
+        try:
+            return local_work_items.delete_comment_by_id(cwd, comment_id)
+        except Exception:
+            return False
+
     if not _find_cli_binary("gh"):
         return False
     try:
@@ -8929,6 +8965,12 @@ def _github_edit_comment(
     repo_owner: str, repo_name: str, comment_id: int, body: str, cwd: Path
 ) -> bool:
     """PATCH one issue comment body via ``gh api``. Best-effort, never raises."""
+    if is_local_owner(repo_owner):
+        try:
+            return local_work_items.edit_comment_by_id(cwd, comment_id, body)
+        except Exception:
+            return False
+
     if not _find_cli_binary("gh"):
         return False
     try:
@@ -8967,10 +9009,35 @@ def github_save_state(
     in cases where a concurrent worker re-created a state comment in the
     gap between a clean-restart pre-clear and this save.
     """
+    body = _serialize_state_comment(workflow_type, issue_number, state)
+
+    if is_local_owner(repo_owner):
+        # Local store: PATCH in place when we already own a comment id,
+        # otherwise adopt the newest existing marker comment (deleting older
+        # duplicates) exactly as the GitHub path does, else append a new one.
+        try:
+            if comment_id and local_work_items.edit_comment_by_id(cwd, comment_id, body):
+                return comment_id
+
+            existing = _find_all_state_comments(
+                repo_owner, repo_name, issue_number, workflow_type, cwd
+            ) if dedupe else []
+            if existing:
+                keep_id = max(existing)
+                if not local_work_items.edit_comment_by_id(cwd, keep_id, body):
+                    return None
+                for stale_id in existing:
+                    if stale_id != keep_id:
+                        local_work_items.delete_comment_by_id(cwd, stale_id)
+                return keep_id
+
+            comment = local_work_items.add_comment(cwd, issue_number, body, author="pdd")
+            return int(comment["id"]) if comment else None
+        except Exception:
+            return None
+
     if not _find_cli_binary("gh"):
         return None
-
-    body = _serialize_state_comment(workflow_type, issue_number, state)
 
     try:
         if comment_id:
@@ -9214,6 +9281,15 @@ def _fetch_issue_comments_via_gh(
 
     Returns ``(comments, None)`` on success and ``(None, reason)`` on failure.
     """
+    if is_local_owner(repo_owner):
+        try:
+            comments = local_work_items.list_comments(cwd, issue_number, since=since)
+        except Exception as exc:
+            return None, f"local work item error: {exc}"
+        if comments is None:
+            return None, f"local work item {issue_number} not found"
+        return [local_work_items.github_shaped_comment(c) for c in comments], None
+
     if not _find_cli_binary("gh"):
         return None, "gh CLI not found on PATH"
     cmd = _gh_api_list_issue_comments_cmd(
@@ -9307,6 +9383,13 @@ def fetch_issue_updated_at(
     cwd: Path,
 ) -> str:
     """Return the GitHub issue ``updated_at`` timestamp, or empty string on failure."""
+    if is_local_owner(repo_owner):
+        try:
+            item = local_work_items.load_work_item(cwd, issue_number)
+        except Exception:
+            return ""
+        return str(item.get("updated_at") or "") if item else ""
+
     if not _find_cli_binary("gh"):
         return ""
     try:
@@ -9812,6 +9895,17 @@ def post_step_comment_once(
     """
     if step_num in posted_steps:
         return True
+    if is_local_owner(repo_owner):
+        try:
+            posted = local_work_items.add_comment(
+                cwd, issue_number, _sanitize_comment_body(body), author="pdd"
+            )
+        except Exception:
+            return False
+        if posted is None:
+            return False
+        posted_steps.add(step_num)
+        return True
     if os.environ.get("PDD_NO_GITHUB_STATE") == "1":
         posted_steps.add(step_num)
         return True
@@ -9918,10 +10012,11 @@ def post_step_comment(
         True if the comment posted successfully, False otherwise (including
         when ``gh`` is not on PATH).
     """
-    if os.environ.get("PDD_NO_GITHUB_STATE") == "1":
-        return True
-    if not _find_cli_binary("gh"):
-        return False
+    if not is_local_owner(repo_owner):
+        if os.environ.get("PDD_NO_GITHUB_STATE") == "1":
+            return True
+        if not _find_cli_binary("gh"):
+            return False
 
     if body is None:
         # Backwards-compatible fallback for agent-execution failures. Explicit
@@ -9966,6 +10061,14 @@ def post_step_comment(
             f"---\n"
             f"*Posted by PDD orchestrator (trusted credentials).*"
         )
+
+    if is_local_owner(repo_owner):
+        try:
+            return local_work_items.add_comment(
+                cwd, issue_number, final_body, author="pdd"
+            ) is not None
+        except Exception:
+            return False
 
     try:
         attempts = [
@@ -10022,6 +10125,13 @@ def post_pr_comment(
     Returns:
         True if comment was posted successfully, False otherwise
     """
+    if is_local_owner(repo_owner):
+        try:
+            return local_work_items.add_comment(
+                cwd, pr_number, _sanitize_comment_body(body), author="pdd"
+            ) is not None
+        except Exception:
+            return False
     if os.environ.get("PDD_NO_GITHUB_STATE") == "1":
         return True
     if not _find_cli_binary("gh"):
@@ -10096,7 +10206,7 @@ def post_final_comment(
     Returns:
         True if comment was posted successfully, False otherwise
     """
-    if not _find_cli_binary("gh"):
+    if not is_local_owner(repo_owner) and not _find_cli_binary("gh"):
         return False
 
     body = (
@@ -10107,6 +10217,15 @@ def post_final_comment(
         f"---\n"
         f"*Automated status comment — pdd-fix workflow exited early.*"
     )
+
+    if is_local_owner(repo_owner):
+        try:
+            return local_work_items.add_comment(
+                cwd, issue_number, body, author="pdd"
+            ) is not None
+        except Exception as exc:
+            console.print(f"[yellow]Warning: Failed to post final comment: {exc}[/yellow]")
+            return False
 
     try:
         result = subprocess.run(

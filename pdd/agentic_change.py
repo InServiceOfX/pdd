@@ -11,6 +11,7 @@ from typing import List, Tuple, Optional, Any
 from rich.console import Console
 
 # Internal imports
+from . import local_work_items
 from .agentic_change_orchestrator import run_agentic_change_orchestrator
 
 console = Console()
@@ -24,10 +25,15 @@ def _escape_format_braces(text: str) -> str:
     return text.replace("{", "{{").replace("}", "}}")
 
 
-def _check_gh_cli() -> bool:
+def _check_gh_cli(issue_ref: str = "") -> bool:
     """
-    Check if the GitHub CLI (gh) is installed and available in the system PATH.
+    Check that the tooling needed to resolve *issue_ref* is available.
+
+    A local work item reference (``local:12``) resolves from ``.pdd/`` and
+    needs no GitHub CLI, so the check passes unconditionally for those.
     """
+    if local_work_items.is_local_ref(issue_ref):
+        return True
     return shutil.which("gh") is not None
 
 
@@ -43,6 +49,14 @@ def _parse_issue_url(url: str) -> Optional[Tuple[str, str, int]]:
     Returns:
         Tuple of (owner, repo, issue_number) if successful, else None.
     """
+    local_number = local_work_items.parse_local_ref(url)
+    if local_number is not None:
+        return (
+            local_work_items.LOCAL_OWNER,
+            local_work_items.local_repo_name(Path.cwd()),
+            local_number,
+        )
+
     pattern = r"(?:https?://)?(?:www\.)?github\.com/([^/]+)/([^/]+)/issues/(\d+)"
     match = re.search(pattern, url)
     if match:
@@ -80,6 +94,13 @@ def _run_gh_command(args: List[str], timeout: Optional[int] = None) -> Tuple[boo
     Returns:
         Tuple of (success, output). Output is stdout on success, stderr on failure.
     """
+    # Local work items answer ``gh api <path>`` requests from ``.pdd/`` so no
+    # subprocess (and no network) is involved.
+    if len(args) >= 2 and args[0] == "api":
+        served = local_work_items.serve_gh_api(Path.cwd(), args[1])
+        if served is not None:
+            return True, served
+
     try:
         result = subprocess.run(
             ["gh"] + args,
@@ -108,6 +129,12 @@ def _setup_repository(owner: str, repo: str, quiet: bool) -> Path:
     Returns:
         Path to the working directory.
     """
+    # A local work item has no remote: the project on disk is the repository.
+    if local_work_items.is_local_owner(owner):
+        if not quiet:
+            console.print(f"[blue]Using current directory as repository: {Path.cwd()}[/blue]")
+        return Path.cwd()
+
     # Check if current directory is the repo
     try:
         if (Path.cwd() / ".git").exists():
@@ -192,7 +219,7 @@ def run_agentic_change(
         - changed_files (List[str])
     """
     # 1. Check dependencies
-    if not _check_gh_cli():
+    if not _check_gh_cli(issue_url):
         return False, "gh CLI not found", 0.0, "", []
 
     # 2. Parse URL

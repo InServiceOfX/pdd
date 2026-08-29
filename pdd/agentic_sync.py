@@ -22,6 +22,7 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from rich.console import Console
 
+from pdd import local_work_items
 from .agentic_change import _check_gh_cli, _escape_format_braces, _parse_issue_url, _run_gh_command
 from .agentic_common import (
     _PROVIDER_ENVIRONMENT_PROVIDERS,
@@ -89,7 +90,12 @@ _GLOBAL_SYNC_TIER1_OPERATIONS = {"generate", "auto-deps"}
 _SYNC_DETERMINE_LOGGER_NAME = "pdd.sync_determine_operation"
 
 def _is_github_issue_url(s: str) -> bool:
-    """Check if a string looks like a GitHub issue URL."""
+    """Check if a string references an agentic work item.
+
+    These predicates gate *routing* into the agentic workflow, not GitHub-ness, so a local work item reference (``local:12``) is accepted too.
+    """
+    if local_work_items.is_local_ref(s):
+        return True
     return bool(re.search(r"github\.com/.+/issues/\d+", s))
 
 

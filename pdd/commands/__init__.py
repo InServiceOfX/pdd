@@ -24,6 +24,7 @@ from .which import which
 from .firecrawl import firecrawl_cache
 from .story import story_cli
 from .intent import intent_cli
+from .work import work_cli
 from .reconcile import install_hooks, reconcile
 from .sync_core import baseline, certify, recover, validate
 
@@ -73,3 +74,4 @@ def register_commands(cli: click.Group) -> None:
     cli.add_command(firecrawl_cache)
     cli.add_command(story_cli)
     cli.add_command(intent_cli)
+    cli.add_command(work_cli)

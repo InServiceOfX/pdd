@@ -10,6 +10,7 @@ import click
 from rich.console import Console
 
 # Relative imports from parent package
+from pdd import local_work_items
 from ..split_main import split_main
 from ..agentic_split import run_agentic_split
 from ..change_main import change_main
@@ -34,7 +35,12 @@ _GITHUB_ISSUE_RE = re.compile(
 
 
 def _is_github_issue_url(value: str) -> bool:
-    """Return True when value is a GitHub issue URL."""
+    """Return True when value references an agentic work item.
+
+    These predicates gate *routing* into the agentic workflow, not GitHub-ness, so a local work item reference (``local:12``) is accepted too.
+    """
+    if local_work_items.is_local_ref(value):
+        return True
     return bool(_GITHUB_ISSUE_RE.match(value.strip()))
 
 @click.command()
