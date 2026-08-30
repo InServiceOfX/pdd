@@ -194,20 +194,22 @@ the completion installer looks for `pdd_completion.*` under `PDD_PATH`.
   echo ".env" >> .gitignore
   ```
 
-**2. Set Conda Environment Variable (Recommended for WSL):**
-This is the most robust method to ensure `PDD_PATH` is always set correctly when your Conda environment is active, as it takes precedence over system variables within the Conda shell.
+**2. Persist `PDD_PATH` in your virtual environment (optional):**
+If you would rather not depend on the `.env` file, set the variable from the
+environment's activation script so it is exported whenever the environment is
+active. This takes precedence over system variables inside that shell.
 
-- **Step 1: Set the Conda variable.**
-  Using the same absolute path you copied in Step 2.1 (`/path/to/your/project/pdd/pdd`), run the following command from your project root (using pwd):
+- **Step 1: Append the export.**
+  Using the same absolute path you copied in Step 2.1 (`/path/to/your/project/pdd/pdd`), run this from your project root:
   ```bash
   # Replace "/path/to/your/project/pdd/pdd" with the correct path
-  conda env config vars set PDD_PATH="/path/to/your/project/pdd/pdd"
+  echo 'export PDD_PATH="/path/to/your/project/pdd/pdd"' >> .venv/bin/activate
   ```
 - **Step 2: Reactivate the environment.**
-  The change will only take effect after you deactivate and reactivate your environment.
+  The change only takes effect after you deactivate and reactivate.
   ```bash
-  conda deactivate
-  conda activate pdd
+  deactivate
+  source .venv/bin/activate
   ```
 - **Step 3: Verify the change.**
   Check that the path is set and points at the package directory:
@@ -311,7 +313,7 @@ In this example, we test a baseline case and then two "robustness" cases where t
 
 #### 2. Run the Prompt Tester
 
-Execute the script from the root of the project using the following command. Make sure your conda environment is active.
+Execute the script from the root of the project using the following command. Make sure your virtual environment is active.
 
 ```bash
 # General usage
@@ -511,21 +513,27 @@ Fixes #123
 
 If you're contributing to the PDD project, follow these additional setup steps to install development dependencies and run tests efficiently.
 
-> **Important: UV vs Conda**
+> **Important: installing vs developing**
 >
-> - **End users** install PDD via UV: `uv tool install pdd-cli`
-> - **Developers/contributors** must use a **Conda environment** for development
+> - **End users** install PDD as a tool: `uv tool install pdd-cli`
+> - **Developers/contributors** work inside a virtual environment created for the checkout
 >
-> UV creates isolated environments per-package (great for production), but development requires a mutable environment where you can modify PDD source code and see changes immediately.
+> A tool install is isolated per-package (great for using PDD), but development
+> needs an editable install so source edits take effect immediately. If you want
+> a single `pdd` on your PATH that always reflects your checkout, install the
+> tool in editable mode instead: `uv tool install --editable . --force`.
 
-### 1. Create a Conda Environment for Development
+### 1. Create a Virtual Environment for Development
 
-**Create and activate the pdd conda environment:**
+**Create and activate it in the project root:**
 
 ```bash
-# Create a new conda environment named 'pdd' with Python 3.11+
-conda create -n pdd python=3.12
-conda activate pdd
+# Python 3.12+
+python3 -m venv .venv
+source .venv/bin/activate
+
+# or, with uv:
+uv venv && source .venv/bin/activate
 ```
 
 ### 2. Install Development Dependencies
@@ -535,11 +543,14 @@ The project uses optional development dependencies defined in `pyproject.toml` f
 **Install all development dependencies:**
 
 ```bash
-# Make sure you're in the project root and pdd conda environment is active
-conda activate pdd
+# Make sure you're in the project root with the virtual environment active
+source .venv/bin/activate
 
 # Install the package in editable mode with dev dependencies
 pip install -e ".[dev]"
+
+# uv-created environments ship no pip; use uv instead:
+uv pip install -e ".[dev]"
 ```
 
 **What this installs:**
@@ -822,9 +833,9 @@ This section helps you diagnose and fix common setup issues. Start by identifyin
 Run these commands to check your setup:
 
 ```bash
-# 1. Check if you're in the right environment
-conda env list
-# Look for * next to 'pdd'
+# 1. Check which interpreter you're using
+which python
+# Should point inside your project's .venv/bin
 
 # 2. Verify PDD is installed and accessible
 pdd --version
@@ -851,8 +862,8 @@ python -c "import pdd; print('PDD imports correctly')"
 **Quick fix:**
 
 ```bash
-# Activate the conda environment
-conda activate pdd
+# Activate the virtual environment
+source .venv/bin/activate
 
 # Verify it worked
 pdd --version
@@ -897,7 +908,7 @@ ls -la pdd/prompts pdd/data
 **Fix:** Follow the `PDD_PATH` setup steps from **"Final Project Configuration → Step 2 or Step 3"** above. Choose either:
 
 - **Step 2**: Set `PDD_PATH` in a `.env` file
-- **Step 3**: Set `PDD_PATH` in Conda environment (recommended for WSL)
+- **Step 3**: Set `PDD_PATH` from the virtual environment's activation script
 
 **Verify the fix:**
 
@@ -1050,8 +1061,8 @@ echo "PDD Setup Verification"
 echo "========================="
 echo ""
 
-echo "1. Conda Environment:"
-conda env list | grep pdd && echo "[PASS] pdd environment exists" || echo "[FAIL] pdd environment not found"
+echo "1. Virtual Environment:"
+[ -n "$VIRTUAL_ENV" ] && echo "[PASS] virtual environment active: $VIRTUAL_ENV" || echo "[FAIL] no virtual environment active"
 echo ""
 
 echo "2. PDD Command:"

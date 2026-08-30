@@ -18,12 +18,13 @@ Invoke the tools directly so the interpreter in use is never ambiguous:
 - `bash tests/regression.sh` and `bash tests/sync_regression.sh` run the longer harnesses (both accept a test number). They expect API access.
 - `pip install -e .` installs the CLI locally for smoke checks.
 
-Be aware that the `make` targets are not a drop-in equivalent. Every target except
-`install` depends on `ensure-dev-deps`, which is hard-wired to `conda run -n pdd`, so
-`make test`, `make coverage`, `make lint`, `make regression`, and `make build` all
-require a conda environment. `make test` additionally exports
-`PDD_RUN_REAL_LLM_TESTS=1` and a Vertex model, so it bills real provider calls, which
-plain `pytest` does not.
+The `make` targets run through `$(PYTHON)`, which defaults to this checkout's `.venv`
+and otherwise falls back to `python3` on PATH. Override it when needed:
+`make test PYTHON=/path/to/python`. Dev dependencies install through `$(PIP_INSTALL)`,
+which prefers `uv pip install` because uv-created environments ship no bundled pip.
+
+One caveat that survives: `make test` exports `PDD_RUN_REAL_LLM_TESTS=1` and a Vertex
+model, so it bills real provider calls. Plain `pytest` does not.
 
 ## Local, GitHub-Free Workflows
 The workflow runs end to end with no GitHub issue, no `gh`, and no network call.

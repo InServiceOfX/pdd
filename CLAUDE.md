@@ -3,8 +3,9 @@
 This repository contains the public PDD CLI. Keep changes focused on the open-source package and avoid adding private deployment or credential-backed workflow details.
 
 ## Commands
-Use a virtual environment for this checkout, not conda. The `make` targets other than
-`install` shell out to `conda run -n pdd`, so prefer the direct invocations here.
+Use a virtual environment for this checkout, not conda. The `make` targets run through
+`$(PYTHON)`, which defaults to the checkout's `.venv`. Prefer the direct invocations
+below for ordinary work — `make test` bills real LLM calls.
 
 - Install dependencies: `pip install -e ".[dev]"` or `pip install -e .`
 - Run all tests: `pytest -vv tests/`

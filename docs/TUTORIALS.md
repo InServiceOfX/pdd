@@ -149,10 +149,10 @@ Adding a new test case is a great way to improve the robustness of PDD. This gui
 
 Before adding a new test, ensure that all existing test cases are passing in your local repository. If other tests are failing, it can be difficult to tell if a new failure is caused by your changes or by an existing issue.
 
-To run all tests, activate the conda environment and run `pytest` from the root of the project:
+To run all tests, activate the virtual environment and run `pytest` from the root of the project:
 
 ```bash
-conda activate pdd
+source .venv/bin/activate
 pytest
 ```
 

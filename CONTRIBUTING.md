@@ -59,10 +59,10 @@ Each complete change ideally includes four elements:
    git clone https://github.com/your-username/pdd.git
    cd pdd
    ```
-2. Create and activate a Conda environment (recommended):
+2. Create and activate a virtual environment:
    ```bash
-   conda create -n pdd python=3.12
-   conda activate pdd
+   python3 -m venv .venv && source .venv/bin/activate
+   # or, with uv:  uv venv && source .venv/bin/activate
    ```
 3. Install dependencies in editable mode with dev extras:
    ```bash

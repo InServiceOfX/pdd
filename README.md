@@ -4158,7 +4158,7 @@ It uses the `litellm` library to:
 **Usage:**
 
 ```bash
-conda activate pdd
+source .venv/bin/activate
 # The script will automatically check ~/.pdd/llm_model.csv first.
 # If not found, it will use the path given by --csv-path (or the default project path).
 python pdd/update_model_costs.py [--csv-path path/to/your/project/llm_model.csv]
@@ -4192,7 +4192,7 @@ It performs the following steps:
 **Usage:**
 
 ```bash
-conda activate pdd
+source .venv/bin/activate
 # Use the checked-in agentic score manifests (DeepSWE primary, Arena fallback).
 python pdd/generate_model_catalog.py [--output path/to/llm_model.csv]
 

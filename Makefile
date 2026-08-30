@@ -7,6 +7,16 @@ CONTEXT_DIR := $(STAGING_DIR)/context
 TESTS_DIR := $(STAGING_DIR)/tests
 PROMPTS_DIR := prompts
 
+# Python interpreter used by the recipes below. Prefers this checkout's virtual
+# environment, otherwise whatever `python3` is on PATH (so an already-activated
+# venv wins). The path is absolute because some recipes `cd` before invoking it.
+# Override explicitly when needed:  make test PYTHON=/path/to/python
+PYTHON ?= $(shell [ -x "$(CURDIR)/.venv/bin/python" ] && echo "$(CURDIR)/.venv/bin/python" || command -v python3 || echo python3)
+PDD_RUN ?= $(PYTHON) -m pdd.cli
+# Installer for dev dependencies. Prefers uv, which works with uv-created
+# virtual environments (those ship no bundled pip); falls back to pip otherwise.
+PIP_INSTALL ?= $(shell command -v uv >/dev/null 2>&1 && echo "uv pip install --python $(PYTHON)" || echo "$(PYTHON) -m pip install")
+
 # Default target
 .PHONY: help
 help:
@@ -266,32 +276,32 @@ run-examples: $(EXAMPLE_FILES)
 	@echo "Running examples one by one:"
 	@$(foreach example_file,$(EXAMPLE_FILES), \
 		echo "Running $(example_file)"; \
-		conda run -n pdd --no-capture-output PYTHONPATH=$(STAGING_DIR):$(PDD_DIR):$$PYTHONPATH python $(example_file) || exit 1; \
+		PYTHONPATH=$(STAGING_DIR):$(PDD_DIR):$$PYTHONPATH $(PYTHON) $(example_file) || exit 1; \
 	)
 	@echo "All examples ran successfully"
 
 # Ensure dev dependencies are installed before running tests
 ensure-dev-deps:
-	@echo "Updating pdd conda environment with dev dependencies"
-	@conda run -n pdd --no-capture-output python -c "import site, glob, shutil; [shutil.rmtree(p) for p in glob.glob(site.getsitepackages()[0] + '/pdd_cli-*.dist-info')]" 2>/dev/null || true
-	@conda run -n pdd --no-capture-output pip install -e '.[dev]'
+	@echo "Installing dev dependencies with $(PYTHON)"
+	@$(PYTHON) -c "import site, glob, shutil; [shutil.rmtree(p) for p in glob.glob(site.getsitepackages()[0] + '/pdd_cli-*.dist-info')]" 2>/dev/null || true
+	@$(PIP_INSTALL) -e '.[dev]'
 
 # Run tests
 test: ensure-dev-deps
 	@echo "Running staging tests"
 	@cd $(STAGING_DIR)
-	@conda run -n pdd --no-capture-output PDD_MODEL_DEFAULT=vertex_ai/gemini-3.6-flash PDD_RUN_REAL_LLM_TESTS=1 PDD_RUN_LLM_TESTS=1 PDD_PATH=$(abspath $(PDD_DIR)) PYTHONPATH=$(PDD_DIR):$$PYTHONPATH python -m pytest -vv -n auto $(TESTS_DIR)
+	@PDD_MODEL_DEFAULT=vertex_ai/gemini-3.6-flash PDD_RUN_REAL_LLM_TESTS=1 PDD_RUN_LLM_TESTS=1 PDD_PATH=$(abspath $(PDD_DIR)) PYTHONPATH=$(PDD_DIR):$$PYTHONPATH $(PYTHON) -m pytest -vv -n auto $(TESTS_DIR)
 
 # Run tests with coverage
 coverage: ensure-dev-deps
 	@echo "Running tests with coverage"
 	@cd $(STAGING_DIR)
-	@conda run -n pdd --no-capture-output PDD_MODEL_DEFAULT=vertex_ai/gemini-3.6-flash PDD_PATH=$(STAGING_DIR) PYTHONPATH=$(PDD_DIR):$$PYTHONPATH python -m pytest --cov=$(PDD_DIR) --cov-report=term-missing --cov-report=html $(TESTS_DIR)
+	@PDD_MODEL_DEFAULT=vertex_ai/gemini-3.6-flash PDD_PATH=$(STAGING_DIR) PYTHONPATH=$(PDD_DIR):$$PYTHONPATH $(PYTHON) -m pytest --cov=$(PDD_DIR) --cov-report=term-missing --cov-report=html $(TESTS_DIR)
 
 # Run pylint
 lint: ensure-dev-deps
 	@echo "Running pylint"
-	@conda run -n pdd --no-capture-output pylint pdd tests
+	@$(PYTHON) -m pylint pdd tests
 
 # Fix crashes in code
 crash:
@@ -346,7 +356,7 @@ ifdef MODULE
 	$(eval RESULTS_FILE := $(MODULE)_verify_results.log)
 
 	@echo "Verifying $(PY_FILE) functionality..."
-	-conda run -n pdd --no-capture-output pdd --strength .9 --verbose verify --max-attempts 3 --budget 5.0 --output-code $(PDD_DIR)/$(MODULE)_verified.py --output-program $(CONTEXT_DIR)/$(MODULE)_example_verified.py --output-results $(RESULTS_FILE) $(PY_PROMPT) $(PY_FILE) $(PROGRAM_FILE)
+	-$(PDD_RUN) --strength .9 --verbose verify --max-attempts 3 --budget 5.0 --output-code $(PDD_DIR)/$(MODULE)_verified.py --output-program $(CONTEXT_DIR)/$(MODULE)_example_verified.py --output-results $(RESULTS_FILE) $(PY_PROMPT) $(PY_FILE) $(PROGRAM_FILE)
 else
 	@echo "Please specify a MODULE to verify"
 	@echo "Usage: make verify MODULE=<module_name>"
@@ -373,7 +383,7 @@ ifdef CHANGE_FILE
 	$(eval CHANGE_FILE_BASENAME := $(basename $(notdir $(CHANGE_FILE))))
 	$(eval DETECT_OUTPUT_FILE := $(CHANGE_FILE_BASENAME)_detect.csv)
 	@echo "Output will be saved to $(DETECT_OUTPUT_FILE)"
-	@conda run -n pdd --no-capture-output pdd detect --output $(DETECT_OUTPUT_FILE) $(ALL_PROMPT_FILES) $(CHANGE_FILE)
+	@$(PDD_RUN) detect --output $(DETECT_OUTPUT_FILE) $(ALL_PROMPT_FILES) $(CHANGE_FILE)
 	@echo "Detection complete. Results in $(DETECT_OUTPUT_FILE)"
 else
 	@echo "Please specify a CHANGE_FILE to detect changes against."
@@ -402,7 +412,7 @@ ifdef PROMPT_FILE
 	$(eval ACTUAL_OUTPUT_FILE := $(if $(OUTPUT_FILE),$(OUTPUT_FILE),$(DEFAULT_OUTPUT_FILE)))
 
 	@echo "Output will be saved to $(ACTUAL_OUTPUT_FILE)"
-	@conda run -n pdd --no-capture-output pdd change --output $(ACTUAL_OUTPUT_FILE) $(CHANGE_PROMPT) $(CODE_FILE) $(PROMPT_FILE)
+	@$(PDD_RUN) change --output $(ACTUAL_OUTPUT_FILE) $(CHANGE_PROMPT) $(CODE_FILE) $(PROMPT_FILE)
 	@echo "Single prompt modification complete. Output at $(ACTUAL_OUTPUT_FILE)"
 else
 	@echo "Error: PROMPT_FILE must be specified for single prompt change mode."
@@ -452,8 +462,8 @@ ifdef CSV_FILE
 	)
 
 	@if [ ! -z "$(OUTPUT_LOCATION)" ]; then echo "Output location specified by user: $(OUTPUT_LOCATION)"; fi
-	@echo "Executing from $(PROMPTS_DIR): conda run -n pdd --no-capture-output pdd --force change --budget 10.0 --csv $(CMD_OUTPUT_ARG) $(REL_CSV_FILE) $(REL_CODE_DIR)"
-	@cd $(PROMPTS_DIR) && conda run -n pdd --no-capture-output pdd --force change --budget 10.0 --csv $(CMD_OUTPUT_ARG) $(REL_CSV_FILE) $(REL_CODE_DIR)
+	@echo "Executing from $(PROMPTS_DIR): $(PDD_RUN) --force change --budget 10.0 --csv $(CMD_OUTPUT_ARG) $(REL_CSV_FILE) $(REL_CODE_DIR)"
+	@cd $(PROMPTS_DIR) && $(PDD_RUN) --force change --budget 10.0 --csv $(CMD_OUTPUT_ARG) $(REL_CSV_FILE) $(REL_CODE_DIR)
 	@echo "CSV batch prompt modification complete."
 else # This means CSV_FILE was not defined, which contradicts the outer ifeq logic. This branch likely won't be hit if CSV_FILE is the primary condition.
 	@echo "Error: CSV_FILE must be specified for CSV batch change mode." # This case should ideally not be reached due to outer ifeq
@@ -471,7 +481,7 @@ ifdef MODULE
 	prompt="$(PROMPTS_DIR)/$${name}_python.prompt"; \
 	echo "Fixing $$name"; \
 	if [ -f "$(CONTEXT_DIR)/$${name}_example.py" ]; then \
-		conda run -n pdd --no-capture-output python -m pdd.cli --time 1 --strength .9 --temperature 0 --verbose --force fix --loop --auto-submit --max-attempts 5 --output-test output/ --output-code output/ --verification-program $(CONTEXT_DIR)/$${name}_example.py $$prompt $(PDD_DIR)/$${name}.py $(TESTS_DIR)/test_$${name}.py $${name}.log; \
+		$(PDD_RUN) --time 1 --strength .9 --temperature 0 --verbose --force fix --loop --auto-submit --max-attempts 5 --output-test output/ --output-code output/ --verification-program $(CONTEXT_DIR)/$${name}_example.py $$prompt $(PDD_DIR)/$${name}.py $(TESTS_DIR)/test_$${name}.py $${name}.log; \
 	else \
 		echo "Warning: No verification program found for $$name"; \
 	fi;
@@ -482,7 +492,7 @@ else
 		name="$${rel_path%_python.prompt}"; \
 		echo "Fixing $$name"; \
 		if [ -f "$(CONTEXT_DIR)/$${name}_example.py" ]; then \
-			conda run -n pdd --no-capture-output python -m pdd.cli --strength .9 --temperature 0 --verbose --force fix --loop --auto-submit --max-attempts 5 --output-test output/ --output-code output/ --verification-program $(CONTEXT_DIR)/$${name}_example.py $$prompt $(PDD_DIR)/$${name}.py $(TESTS_DIR)/test_$${name}.py $${name}.log; \
+			$(PDD_RUN) --strength .9 --temperature 0 --verbose --force fix --loop --auto-submit --max-attempts 5 --output-test output/ --output-code output/ --verification-program $(CONTEXT_DIR)/$${name}_example.py $$prompt $(PDD_DIR)/$${name}.py $(TESTS_DIR)/test_$${name}.py $${name}.log; \
 		else \
 			echo "Warning: No verification program found for $$name"; \
 		fi; \
@@ -506,10 +516,10 @@ ifdef MODULE
 	fi
 
 	@echo "Updating $(PY_PROMPT) based on changes in $(PY_FILE)"
-	conda run -n pdd --no-capture-output pdd --verbose update --git $(PY_PROMPT) $(PY_FILE)
+	$(PDD_RUN) --verbose update --git $(PY_PROMPT) $(PY_FILE)
 else
 	@echo "Running repository-wide prompt update"
-	conda run -n pdd --no-capture-output pdd --verbose update --directory pdd --extensions py
+	$(PDD_RUN) --verbose update --directory pdd --extensions py
 endif
 
 
@@ -667,12 +677,12 @@ test-all-ci: ensure-dev-deps
 	@mkdir -p test_results
 ifdef PR_NUMBER
 ifdef PR_URL
-	@conda run -n pdd --no-capture-output python scripts/run_all_tests_with_results.py --pr-number $(PR_NUMBER) --pr-url $(PR_URL)
+	@$(PYTHON) scripts/run_all_tests_with_results.py --pr-number $(PR_NUMBER) --pr-url $(PR_URL)
 else
-	@conda run -n pdd --no-capture-output python scripts/run_all_tests_with_results.py --pr-number $(PR_NUMBER)
+	@$(PYTHON) scripts/run_all_tests_with_results.py --pr-number $(PR_NUMBER)
 endif
 else
-	@conda run -n pdd --no-capture-output python scripts/run_all_tests_with_results.py
+	@$(PYTHON) scripts/run_all_tests_with_results.py
 endif
 
 install:
@@ -682,16 +692,16 @@ install:
 build:
 	@echo "Building pdd"
 	@rm -rf dist
-	@conda run -n pdd --no-capture-output python -m build
+	@$(PYTHON) -m build
 	@rm dist/*.tar.gz #don't upload source distribution
 
         # Post-process the wheel with preprocessed prompts
 	@echo "Post-processing wheel with preprocessed prompts..."
-	@conda run -n pdd --no-capture-output python scripts/preprocess_wheel.py 'dist/*.whl'
+	@$(PYTHON) scripts/preprocess_wheel.py 'dist/*.whl'
 
 upload-pypi:
 	@echo "Uploading wheel to PyPI"
-	@conda run -n pdd --no-capture-output twine upload --repository pypi dist/*.whl
+	@$(PYTHON) -m twine upload --repository pypi dist/*.whl
 
 publish:
 	@set -e; \
