@@ -1833,6 +1833,24 @@ class TestValidateStep5OutputStructure:
         assert "step 5" in reason
         assert "200" in reason or "shorter" in reason
 
+    def test_summary_without_structured_module_entries_is_invalid(self):
+        summary = (
+            "## Step 5: Module Design Corrected\n\n"
+            "The module design was updated with all missing dependencies and interfaces. "
+            "Priorities remain unchanged, the dependency graph is acyclic, and every "
+            "module now has an owning route. The full design was written to a Markdown "
+            "file on disk for the next step to read. "
+            "This response deliberately contains enough meaningful characters and all "
+            "of the old validator's marker words—module, dependency, priority, and "
+            "interface—but it does not contain the complete design that must replace "
+            "step_outputs['5']."
+        )
+
+        ok, reason = _validate_step5_output_structure(summary)
+
+        assert ok is False
+        assert "module entr" in reason.lower()
+
     def test_valid_module_design_passes(self):
         ok, reason = _validate_step5_output_structure(_VALID_STEP5_DESIGN_OUTPUT)
         assert ok is True

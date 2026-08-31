@@ -146,6 +146,19 @@ _STEP5_DESIGN_MARKERS: Tuple[str, ...] = (
     "## modules",
 )
 
+# A complete step-5 response must contain at least one structured module entry,
+# not merely prose that mentions marker words. Both formats used by the
+# architecture prompts and tests are accepted: Markdown table rows and
+# ``- foo_module: ...`` / ``module: foo ...`` list entries.
+_STEP5_MODULE_ENTRY_RE = re.compile(
+    r"^(?:"
+    r"\s*\|\s*\d+\s*\|[^\n]*\|"
+    r"|\s*[-*]\s+`?[A-Za-z0-9_.-]*(?:_module|module)`?\s*[:—-]"
+    r"|\s*module\s*:\s*\S+"
+    r")",
+    re.IGNORECASE | re.MULTILINE,
+)
+
 
 def _validate_step5_output_structure(output: str) -> Tuple[bool, str]:
     """Deterministic structural validator for the step-5 module-design output.
@@ -196,6 +209,13 @@ def _validate_step5_output_structure(output: str) -> Tuple[bool, str]:
             False,
             "step 5 output contains no module-design markers "
             "(none of: module, dependency, priority, interface)",
+        )
+
+    if not _STEP5_MODULE_ENTRY_RE.search(stripped):
+        return (
+            False,
+            "step 5 output contains no structured module entries "
+            "(expected a numbered Markdown table row or module list entry)",
         )
 
     return True, ""

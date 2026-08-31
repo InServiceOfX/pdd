@@ -125,8 +125,7 @@ Output the COMPLETE corrected module design in the SAME FORMAT as the original S
 - Do NOT add modules that aren't justified by PRD requirements
 - Maintain valid topological sort in priority ordering
 - The output of this step REPLACES the Step 5 output for all subsequent steps
-- Post findings to GitHub using gh issue comment:
-
-```
-gh issue comment {issue_number} --repo {repo_owner}/{repo_name} --body "## Step 5b: Module Design Corrected\n\n### Gaps Fixed\n- [list of additions]\n\n---\n*Proceeding to Step 6*"
-```
+- Return the complete corrected design directly in this response. Do not write
+  it to a Markdown file and do not replace it with a summary or file path.
+- Do NOT post to GitHub from this text-only step. The orchestrator owns any
+  persistence or reporting after it has validated the complete response.
