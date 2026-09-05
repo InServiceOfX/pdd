@@ -491,7 +491,15 @@ def _auto_submit_example(
     import requests
 
     from .core.cloud import CloudConfig, get_cloud_request_timeout
-    from .get_jwt_token import get_jwt_token
+    from .get_jwt_token import (
+        AuthError,
+        NetworkError,
+        RateLimitError,
+        TokenError,
+        UserCancelledError,
+        get_jwt_token,
+    )
+    from .github_guard import github_auth_opted_in
     from .preprocess import preprocess
 
     quiet = ctx.obj.get("quiet", False)
@@ -529,6 +537,7 @@ def _auto_submit_example(
                 firebase_api_key=os.environ.get("NEXT_PUBLIC_FIREBASE_API_KEY"),
                 github_client_id=os.environ.get("GITHUB_CLIENT_ID"),
                 app_name="PDD Code Generator",
+                allow_device_flow=github_auth_opted_in(),
             ),
             timeout=auth_timeout_s,
         ))
@@ -538,6 +547,16 @@ def _auto_submit_example(
                 "[yellow]Skipping example submission: auth did not complete "
                 f"within {auth_timeout_s:.0f}s[/yellow]"
             )
+        return
+    except (
+        AuthError,
+        NetworkError,
+        RateLimitError,
+        TokenError,
+        UserCancelledError,
+    ) as exc:
+        if not quiet:
+            rprint(f"[yellow]Skipping example submission: {exc}[/yellow]")
         return
 
     prompt_content = pdd_files["prompt"].read_text(encoding="utf-8")

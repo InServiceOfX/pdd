@@ -1,0 +1,56 @@
+<pdd-reason>Defines the process-wide boundary that keeps local PDD work free of GitHub CLI, API, OAuth, Copilot, and agent-instruction side effects.</pdd-reason>
+<pdd-interface>
+{
+  "type": "module",
+  "module": {
+    "exceptions": [
+      {"name": "GitHubAccessDisabled", "base": "RuntimeError"}
+    ],
+    "functions": [
+      {"name": "local_only_enabled", "signature": "() -> bool", "returns": "bool"},
+      {"name": "github_auth_opted_in", "signature": "() -> bool", "returns": "bool"},
+      {"name": "github_access_allowed", "signature": "() -> bool", "returns": "bool"},
+      {"name": "require_github_access", "signature": "(purpose: str = 'GitHub operation') -> None", "returns": "None"},
+      {"name": "find_gh", "signature": "() -> Optional[str]", "returns": "Optional[str]"},
+      {"name": "instruction_is_local", "signature": "(instruction: str) -> bool", "returns": "bool"},
+      {"name": "localize_agent_instruction", "signature": "(instruction: str) -> str", "returns": "str"}
+    ]
+  }
+}
+</pdd-interface>
+
+% You are an expert Python engineer. Write `pdd/github_guard.py`.
+
+<include>context/python_preamble.prompt</include>
+
+% Role and scope
+
+Provide one dependency-light, deterministic policy boundary for GitHub access
+and authentication. This module performs no network or subprocess operation
+other than locating the `gh` executable when access is allowed.
+
+% Vocabulary
+
+- **local-only**: `PDD_LOCAL_ONLY` has a case-insensitive truthy value from
+  `1`, `true`, `yes`, or `on`.
+- **GitHub-auth opt-in**: `PDD_ALLOW_GITHUB_AUTH` has a truthy value and
+  local-only is false.
+- **local agent instruction**: an instruction carrying a local-source marker
+  (`local:`, `local-intent:`, `pdd-local://`, or repository owner `local`).
+
+<contract_rules>
+R1 (MUST): `local_only_enabled` recognizes exactly the documented truthy values after trimming and case folding.
+R2 (MUST): `github_access_allowed` is false in local-only mode and true otherwise; `require_github_access` raises `GitHubAccessDisabled` with an actionable local-work-item message when false.
+R3 (MUST): `github_auth_opted_in` is true only when `PDD_ALLOW_GITHUB_AUTH` is truthy and local-only is false.
+R4 (MUST): `find_gh` returns None without calling `shutil.which` in local-only mode and otherwise returns `shutil.which("gh")`.
+R5 (MUST): `instruction_is_local` recognizes local work-item and local-intent markers without classifying an ordinary GitHub issue URL as local.
+R6 (MUST): `localize_agent_instruction` leaves non-local instructions byte-for-byte unchanged.
+R7 (MUST): For a local instruction, `localize_agent_instruction` appends a highest-priority final policy that forbids `gh`, GitHub API/network access, GitHub comments/issues/pull requests, and GitHub authentication, and requires reports to be returned to the orchestrator for local persistence.
+R8 (MUST): Re-localizing an already localized instruction is idempotent.
+R9 (MUST NOT): Local-only mode may not be overridden by `PDD_ALLOW_GITHUB_AUTH`, `PDD_ALLOW_INTERACTIVE`, a configured GitHub Copilot model, or the presence of cached credentials.
+</contract_rules>
+
+% Deliverables
+
+- Code: `pdd/github_guard.py`
+- Tests: `tests/test_github_guard.py`

@@ -118,7 +118,8 @@ def _check_gh_cli(issue_ref: str = "") -> bool:
     """
     if local_work_items.is_local_ref(issue_ref):
         return True
-    return shutil.which("gh") is not None
+    from pdd.github_guard import local_only_enabled
+    return not local_only_enabled() and shutil.which("gh") is not None
 
 
 def _run_gh_command(args: List[str]) -> Tuple[bool, str]:
@@ -137,6 +138,11 @@ def _run_gh_command(args: List[str]) -> Tuple[bool, str]:
         served = local_work_items.serve_gh_api(Path.cwd(), args[1])
         if served is not None:
             return True, served
+
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        return False, "GitHub CLI unavailable or disabled by PDD_LOCAL_ONLY=1"
 
     try:
         result = subprocess.run(
@@ -247,6 +253,10 @@ def _ensure_repo_context(
     if not quiet:
         console.print(f"[blue]Cloning {owner}/{repo} into {target_dir}...[/blue]")
     
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        return current_cwd, "GitHub CLI unavailable or disabled by PDD_LOCAL_ONLY=1"
     try:
         subprocess.run(
             ["gh", "repo", "clone", f"{owner}/{repo}"],

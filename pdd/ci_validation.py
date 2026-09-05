@@ -142,6 +142,10 @@ def _run_command_bytes(cmd: List[str], cwd: Path) -> subprocess.CompletedProcess
 
 def _run_gh(repo_owner: str, repo_name: str, cwd: Path, args: List[str]) -> subprocess.CompletedProcess[str]:
     """Run a gh command scoped to the current repository."""
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        return subprocess.CompletedProcess([], 127, "", "GitHub access disabled")
     return _run_command(["gh", *args, "--repo", f"{repo_owner}/{repo_name}"], cwd)
 
 
@@ -151,6 +155,10 @@ def _run_gh_api(cwd: Path, args: List[str]) -> subprocess.CompletedProcess[str]:
     ``gh api`` endpoints already include the repository path and do not support
     the global ``--repo`` flag.
     """
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        return subprocess.CompletedProcess([], 127, "", "GitHub access disabled")
     return _run_command(["gh", "api", *args], cwd)
 
 
@@ -161,6 +169,10 @@ def _run_gh_bytes(
     args: List[str],
 ) -> subprocess.CompletedProcess[bytes]:
     """Run a gh command that may return binary output."""
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        return subprocess.CompletedProcess([], 127, b"", b"GitHub access disabled")
     return _run_command_bytes(["gh", *args, "--repo", f"{repo_owner}/{repo_name}"], cwd)
 
 

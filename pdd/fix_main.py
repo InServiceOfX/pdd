@@ -22,6 +22,7 @@ from .construct_paths import construct_paths
 from .fix_errors_from_unit_tests import fix_errors_from_unit_tests
 from .fix_error_loop import fix_error_loop, run_pytest_on_file
 from .get_jwt_token import get_jwt_token
+from .github_guard import github_auth_opted_in
 from .get_language import get_language
 from .core.cloud import CloudConfig, get_cloud_timeout, get_cloud_request_timeout
 from .mock_contract_validation import (
@@ -674,6 +675,7 @@ def fix_main(
                                 firebase_api_key=os.environ.get("NEXT_PUBLIC_FIREBASE_API_KEY"),
                                 github_client_id=os.environ.get("GITHUB_CLIENT_ID"),
                                 app_name="PDD Code Generator",
+                                allow_device_flow=github_auth_opted_in(),
                             ),
                             timeout=auth_timeout_s,
                         ))

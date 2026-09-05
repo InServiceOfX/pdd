@@ -13,6 +13,7 @@ from typing import Optional
 
 from rich.console import Console
 
+from ..github_guard import github_auth_opted_in, local_only_enabled
 from ..get_jwt_token import (
     AuthError,
     NetworkError,
@@ -179,8 +180,10 @@ class CloudConfig:
     ) -> Optional[str]:
         """Get JWT token for cloud authentication.
 
-        Checks PDD_JWT_TOKEN environment variable first (for testing/CI),
-        then falls back to interactive device flow authentication.
+        Local-only mode returns None before considering any credential. Outside
+        local-only mode, checks injected and cached credentials first, permits
+        silent refresh-token use, and enters interactive GitHub device flow
+        only after explicit GitHub-auth opt-in.
 
         Args:
             verbose: Whether to print status messages
@@ -194,6 +197,12 @@ class CloudConfig:
         """
         # Default env to prod for typical CLI usage (unless emulator/custom URL says otherwise).
         CloudConfig.ensure_default_env()
+
+        # Local-only is a hard process boundary, including cached/injected
+        # credentials. It means no GitHub-backed cloud traffic, not merely
+        # "do not show an OAuth prompt".
+        if local_only_enabled():
+            return None
 
         # Check for pre-injected token (testing/CI)
         injected_token = os.environ.get(PDD_JWT_TOKEN_ENV)
@@ -211,6 +220,23 @@ class CloudConfig:
             if verbose:
                 console.print("[info]Using cached JWT token[/info]")
             return cached_jwt
+
+        # Ordinary commands never start GitHub's device flow implicitly.
+        # Preserve silent refresh-token use, but require an explicit opt-in
+        # before entering a flow that can show a device code.
+        if not github_auth_opted_in():
+            firebase_api_key = os.environ.get(FIREBASE_API_KEY_ENV)
+            try:
+                has_refresh = bool(
+                    firebase_api_key
+                    and FirebaseAuthenticator(
+                        firebase_api_key, app_name
+                    )._get_stored_refresh_token()
+                )
+            except Exception:
+                has_refresh = False
+            if not has_refresh:
+                return None
 
         # Explicit machine-mode flags suppress device flow while preserving a
         # silent keyring refresh. The async helper performs the actual refresh;
@@ -267,6 +293,7 @@ class CloudConfig:
                     firebase_api_key=firebase_api_key,
                     github_client_id=github_client_id,
                     app_name=app_name,
+                    allow_device_flow=github_auth_opted_in(),
                 )
             )
         except (
@@ -299,14 +326,14 @@ class CloudConfig:
         """Check if cloud features are available.
 
         Cloud is enabled if:
-        1. PDD_FORCE_LOCAL is NOT set (respects --local flag), AND
+        1. Neither PDD_FORCE_LOCAL nor PDD_LOCAL_ONLY is set, AND
         2. NOT already running inside a cloud environment (prevents infinite loops), AND
         3. Either:
            a. PDD_JWT_TOKEN is set (injected token for testing/CI), OR
            b. Both FIREBASE_API_KEY and GITHUB_CLIENT_ID are set (for device flow auth)
         """
         # Respect --local flag (sets PDD_FORCE_LOCAL=1)
-        if os.environ.get("PDD_FORCE_LOCAL"):
+        if os.environ.get("PDD_FORCE_LOCAL") or local_only_enabled():
             return False
 
         # CRITICAL: Never enable cloud mode when already running in cloud

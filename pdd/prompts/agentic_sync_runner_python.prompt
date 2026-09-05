@@ -101,6 +101,9 @@ Parallel sync engine that runs `pdd sync` for multiple modules concurrently usin
 - `needs_review: Optional[str] = None` — set (issue #1903 §B.4) when an unreconcilable adopted co-located test was kept unchanged and flagged for review instead of hard-failing the issue-driven workflow. The module still counts as `success` (the PR is opened); this note is surfaced in the progress comment / PR thread.
 
 % GitHub Comment Updates
+- `_run_gh_command` MUST consult `pdd.github_guard` after attempting a local
+  work-item response and before starting a subprocess; local-only returns the
+  existing unavailable result without invoking `gh`.
 - Create comment on first update (`gh api POST`), store `comment_id`
 - Before creating a new comment, search existing issue comments with `gh api .../issues/{issue_number}/comments --paginate --slurp` for the newest body beginning with `## PDD Agentic Sync Progress\nIssue: #{issue_number}`. Reuse that comment id with PATCH so resumed durable runs and fresh worker reruns do not spam duplicate progress comments.
 - Subsequent updates: PATCH existing comment

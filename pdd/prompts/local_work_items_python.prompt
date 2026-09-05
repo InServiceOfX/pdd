@@ -93,8 +93,8 @@ R5 - Shape compatibility
 `gh api .../issues/N` payload: `number`, `title`, `body`, `state`,
 `labels` as `[{"name": ...}]`, `user.login`, `comments_url`, `comments`,
 `created_at`, `updated_at`. `github_shaped_comment` MUST emit `id`,
-`user.login`, `body`, `created_at`, `updated_at`. Timestamps MUST use GitHub's
-ISO-8601 `Z` form so the existing timestamp parsers accept them unchanged.
+`user.login`, `body`, `created_at`, `updated_at`. All timestamps MUST use
+GitHub's ISO-8601 `Z` form so the existing parsers accept them unchanged.
 
 R6 - `since` filtering matches GitHub
 `list_comments` MUST return only comments whose activity timestamp (updated_at,
@@ -110,10 +110,8 @@ printed, and MUST return None for any other path so a caller falls through to
 the real `gh` unchanged.
 
 R8 - Local-only guard
-`local_only_enabled` MUST report whether `PDD_LOCAL_ONLY` is set to a truthy
-value. When it is, the agentic layer reports the `gh` binary as absent, so
-every GitHub helper takes its existing "no gh" branch. This function MUST NOT
-itself perform that suppression.
+`local_only_enabled` MUST delegate to `pdd.github_guard.local_only_enabled` so
+the work-item layer and the process-wide GitHub boundary cannot disagree.
 
 R9 - State validity
 `update_work_item` MUST reject any state other than `open` or `closed`, MUST

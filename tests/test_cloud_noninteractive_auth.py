@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Optional
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -38,6 +39,8 @@ def _isolate_env(monkeypatch):
         "CI",
         "PDD_FORCE",
         "PDD_ALLOW_INTERACTIVE",
+        "PDD_ALLOW_GITHUB_AUTH",
+        "PDD_LOCAL_ONLY",
         FIREBASE_API_KEY_ENV,
         GITHUB_CLIENT_ID_ENV,
         "PDD_FORCE_LOCAL",
@@ -125,6 +128,7 @@ def test_get_jwt_token_refuses_device_flow_in_noninteractive(monkeypatch):
 
 def test_get_jwt_token_allows_device_flow_when_interactive(monkeypatch):
     """Interactive context (no explicit machine flag) preserves the happy path."""
+    monkeypatch.setenv("PDD_ALLOW_GITHUB_AUTH", "1")
     monkeypatch.setenv(FIREBASE_API_KEY_ENV, "fake_firebase_key")
     monkeypatch.setenv(GITHUB_CLIENT_ID_ENV, "fake_github_client_id")
 
@@ -134,15 +138,49 @@ def test_get_jwt_token_allows_device_flow_when_interactive(monkeypatch):
         firebase_api_key: str,
         github_client_id: str,
         app_name: str,
+        allow_device_flow: bool,
     ) -> Optional[str]:
         assert firebase_api_key == "fake_firebase_key"
         assert github_client_id == "fake_github_client_id"
+        assert allow_device_flow is True
         return "fresh-device-flow-token"
 
     monkeypatch.setattr(cloud, "device_flow_get_token", _fake_device_flow)
 
     token = CloudConfig.get_jwt_token(verbose=False)
     assert token == "fresh-device-flow-token"
+
+
+def test_ordinary_command_never_starts_github_device_flow(monkeypatch):
+    """Configured cloud credentials alone do not authorize an auth prompt."""
+    monkeypatch.delenv("PDD_ALLOW_GITHUB_AUTH", raising=False)
+    monkeypatch.setenv(FIREBASE_API_KEY_ENV, "fake_firebase_key")
+    monkeypatch.setenv(GITHUB_CLIENT_ID_ENV, "fake_github_client_id")
+    monkeypatch.setattr(cloud, "_get_cached_jwt", lambda verbose=False: None)
+    monkeypatch.setattr(
+        cloud.FirebaseAuthenticator,
+        "_get_stored_refresh_token",
+        lambda self: None,
+    )
+
+    async def _unexpected_device_flow(**_kwargs):
+        raise AssertionError("ordinary command attempted GitHub device flow")
+
+    monkeypatch.setattr(cloud, "device_flow_get_token", _unexpected_device_flow)
+    assert CloudConfig.get_jwt_token(verbose=False) is None
+
+
+def test_local_only_rejects_even_injected_or_cached_cloud_auth(monkeypatch):
+    """The local-only boundary is stronger than all cloud credentials."""
+    monkeypatch.setenv("PDD_LOCAL_ONLY", "1")
+    monkeypatch.setenv("PDD_ALLOW_GITHUB_AUTH", "1")
+    monkeypatch.setenv(PDD_JWT_TOKEN_ENV, "injected-token")
+    cached = MagicMock(return_value="cached-token")
+    monkeypatch.setattr(cloud, "_get_cached_jwt", cached)
+
+    assert CloudConfig.is_cloud_enabled() is False
+    assert CloudConfig.get_jwt_token(verbose=False) is None
+    cached.assert_not_called()
 
 
 def test_get_jwt_token_injected_token_still_wins_in_noninteractive(monkeypatch):

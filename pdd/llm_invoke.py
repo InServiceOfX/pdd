@@ -5,6 +5,14 @@ import copy
 import csv
 import getpass
 import os
+
+from .github_guard import github_auth_opted_in, local_only_enabled
+
+# LiteLLM normally refreshes its model-cost catalog from GitHub during import.
+# Local-only mode must close that import-time network path as well.
+if local_only_enabled():
+    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")
+
 import pandas as pd
 import litellm
 import logging # ADDED FOR DETAILED LOGGING
@@ -67,7 +75,6 @@ from .grounding_provenance import (
     resolve_grounding_overrides_for_invoke,
     reviewed_from_click_ctx,
 )
-
 # Environment variable to control log level
 PDD_LOG_LEVEL = os.getenv("PDD_LOG_LEVEL", "INFO")
 PRODUCTION_MODE = os.getenv("PDD_ENVIRONMENT") == "production"
@@ -3403,7 +3410,9 @@ def _clean_optional_scalar(value: Any) -> Optional[str]:
 
 def _interactive_credential_acquisition_allowed() -> bool:
     """Whether API-key setup may prompt interactively in this process."""
-    return not (_env_truthy("PDD_FORCE") or _is_cloud_runtime())
+    return not (
+        local_only_enabled() or _env_truthy("PDD_FORCE") or _is_cloud_runtime()
+    )
 
 
 def _vertex_project_value() -> Optional[str]:
@@ -3560,12 +3569,34 @@ def _select_model_candidates(
         keep_mask = ~is_interactive | (available_df['model'] == base_model_name)
         available_df = available_df[keep_mask]
 
+    # GitHub Copilot can open LiteLLM's GitHub device flow. Generic
+    # interactive permission and an explicitly configured default are not
+    # sufficient authorization for that side effect: require the dedicated
+    # GitHub-auth opt-in, and make PDD_LOCAL_ONLY an unconditional deny.
+    if local_only_enabled() or not github_auth_opted_in():
+        is_copilot = available_df['model'].map(
+            lambda value: str(value).strip().lower().startswith("github_copilot/")
+        )
+        available_df = available_df[~is_copilot]
+
     # --- Check if the initial DataFrame itself was empty ---
     if model_df.empty:
         raise ValueError("Loaded model data is empty. Check CSV file.")
 
     # --- Check if filtering resulted in empty (might indicate all models had NaN api_key) ---
     if available_df.empty:
+        if str(base_model_name).strip().lower().startswith("github_copilot/"):
+            if local_only_enabled():
+                raise ValueError(
+                    "GitHub Copilot is disabled by PDD_LOCAL_ONLY=1. "
+                    "Choose a non-GitHub provider for this local workflow."
+                )
+            if not github_auth_opted_in():
+                raise ValueError(
+                    "GitHub Copilot requires explicit GitHub authentication "
+                    "permission. Set PDD_ALLOW_GITHUB_AUTH=1 for an intentional "
+                    "device-flow run or choose a non-GitHub provider."
+                )
         # This case is less likely if notna() is the only filter, but good to check.
         logger.warning("No models found after filtering for non-NaN api_key. Check CSV 'api_key' column.")
         # Decide if this should be a hard error or allow proceeding if logic permits
@@ -3861,6 +3892,14 @@ def _ensure_api_key(model_info: Dict[str, Any], newly_acquired_keys: Dict[str, b
             )
             return True
         if model_name.startswith("github_copilot/"):
+            if not github_auth_opted_in():
+                logger.warning(
+                    "Skipping GitHub Copilot model '%s': interactive GitHub "
+                    "authentication was not explicitly enabled. Set "
+                    "PDD_ALLOW_GITHUB_AUTH=1 for an intentional device-flow run.",
+                    model_name,
+                )
+                return False
             token_dir = Path(os.environ.get(
                 'GITHUB_COPILOT_TOKEN_DIR',
                 str(Path.home() / ".config" / "litellm" / "github_copilot"),

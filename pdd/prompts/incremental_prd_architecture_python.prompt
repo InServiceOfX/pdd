@@ -37,6 +37,8 @@ Implement incremental PRD-to-architecture propagation. The LLM may propose a pat
 
 2. Implement `run_incremental_prd_propagation(...)`:
    - Accept a GitHub issue URL or local PRD file.
+   - `_read_github_issue_prd` MUST consult `pdd.github_guard` before invoking
+     `gh`; `PDD_LOCAL_ONLY=1` fails locally without a subprocess.
    - Build a PRD diff from `.pdd/meta/prd_hashes.json` fingerprints and ignored `.pdd/cache/prd_snapshots/` raw baselines when present.
    - `.pdd/meta/prd_hashes.json` must store hashes and minimal provenance only. Never persist raw PRD, GitHub issue body, or issue comment text in tracked metadata.
    - For local PRD files without a snapshot, try `git show HEAD:<path>` as the baseline; otherwise treat the full PRD as new content.

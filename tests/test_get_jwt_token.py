@@ -30,6 +30,7 @@ def _isolate_auth_env(monkeypatch):
     production non-interactive guard.
     """
     monkeypatch.delenv(PDD_JWT_TOKEN_ENV, raising=False)
+    monkeypatch.delenv("PDD_LOCAL_ONLY", raising=False)
     monkeypatch.delenv("PDD_NO_INTERACTIVE", raising=False)
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.setattr("pdd.get_jwt_token._is_noninteractive", lambda: False)
@@ -51,6 +52,51 @@ async def test_get_jwt_token_prefers_injected_env_token(
     assert returned_token == "injected-token"
     mock_get_cached_jwt.assert_not_called()
     mock_firebase_auth.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("pdd.get_jwt_token._get_cached_jwt")
+async def test_local_only_precedes_every_auth_credential(mock_get_cached_jwt, monkeypatch):
+    """The hard local boundary wins over injected and cached credentials."""
+    monkeypatch.setenv("PDD_LOCAL_ONLY", "1")
+    monkeypatch.setenv(PDD_JWT_TOKEN_ENV, "injected-token")
+
+    with pytest.raises(AuthError, match="disabled by PDD_LOCAL_ONLY=1"):
+        await get_jwt_token("fake_firebase_key", "fake_github_client")
+
+    mock_get_cached_jwt.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_device_flow_request_is_blocked_in_local_only(monkeypatch):
+    """Direct server-style DeviceFlow use cannot bypass the process guard."""
+    monkeypatch.setenv("PDD_LOCAL_ONLY", "1")
+    from pdd.get_jwt_token import DeviceFlow
+
+    with patch("pdd.get_jwt_token.requests.post") as post:
+        with pytest.raises(AuthError, match="disabled by PDD_LOCAL_ONLY=1"):
+            await DeviceFlow("client").request_device_code()
+    post.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("pdd.get_jwt_token.FirebaseAuthenticator")
+@patch("pdd.get_jwt_token._get_cached_jwt", return_value=None)
+async def test_disallowed_device_flow_still_permits_no_fallthrough(
+    _mock_cached,
+    mock_firebase_auth,
+):
+    """A vanished refresh token cannot turn an ordinary call interactive."""
+    mock_firebase_auth.return_value._get_stored_refresh_token.return_value = None
+
+    with patch("pdd.get_jwt_token.DeviceFlow") as device_flow:
+        with pytest.raises(AuthError, match="not explicitly enabled"):
+            await get_jwt_token(
+                "fake_firebase_key",
+                "fake_github_client",
+                allow_device_flow=False,
+            )
+    device_flow.assert_not_called()
 
 
 def test_autouse_fixture_clears_pdd_jwt_token_env_leak():

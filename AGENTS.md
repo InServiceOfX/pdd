@@ -44,7 +44,10 @@ a different id, so an agent cannot show one interpretation and apply another. Se
 local:1`, `pdd fix local:1`, `pdd change local:1`, `pdd test local:1`, `pdd sync
 local:1`, `pdd checkup local:1`. `pdd work comment <n> --text "..."` steers a run
 mid-flight. Set `PDD_LOCAL_ONLY=1` when the requirement is that the project must never
-talk to GitHub. See [docs/local_work_items.md](docs/local_work_items.md).
+talk to GitHub; this also disables GitHub SSO/Copilot device flows and local-agent
+GitHub instructions. Ordinary commands require `PDD_ALLOW_GITHUB_AUTH=1` before
+starting GitHub-backed authentication. See
+[docs/github_auth_policy.md](docs/github_auth_policy.md).
 
 ## Coding Style & Naming Conventions
 Use Python 3.12+, four-space indentation, and type annotations for public functions. Match module and file names to their prompt identifiers (`snake_case`), keep classes in `PascalCase`, and reserve `UPPER_SNAKE_CASE` for constants. Favor small, composable functions with docstrings summarizing side effects. Run `pylint pdd tests` (or `pylint pdd/<module>.py`) before submitting to catch style regressions.

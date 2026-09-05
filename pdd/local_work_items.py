@@ -38,8 +38,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import json
-import os
 import re
+
+from .github_guard import local_only_enabled as _guard_local_only_enabled
 
 __all__ = [
     "LOCAL_OWNER",
@@ -168,7 +169,7 @@ def local_only_enabled() -> bool:
     missing, so every GitHub helper takes its existing "no gh" branch instead
     of shelling out.
     """
-    return os.environ.get("PDD_LOCAL_ONLY", "").strip() in {"1", "true", "TRUE", "yes"}
+    return _guard_local_only_enabled()
 
 
 # ---------------------------------------------------------------------------

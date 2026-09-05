@@ -24,6 +24,8 @@ Orchestrates the E2E fix by fetching GitHub issue data (body + comments), detect
 % Requirements
 1. **Function**: `run_agentic_e2e_fix(issue_url: str, *, timeout_adder: float = 0.0, max_cycles: int = 5, resume: bool = True, force: bool = False, verbose: bool = False, quiet: bool = False, use_github_state: bool = True, protect_tests: bool = False, ci_retries: int = 3, skip_ci: bool = False, skip_cleanup: bool = False, reasoning_time: Optional[float] = None, clean_restart: bool = False) -> Tuple[bool, str, float, str, List[str]]`
 2. **GitHub Integration**: Parse the issue URL and fetch the issue (title, body, author) and all comments via `gh api` (use `--paginate`). Combine title, body, and comments into `issue_content`.
+   Every remote helper MUST consult `pdd.github_guard` and return without
+   executing `gh` when `PDD_LOCAL_ONLY=1`; local work items stay on disk.
 3. **Working Directory Detection**:
    - Priority 1: Check `.pdd/worktrees/` for `fix-issue-{N}`, `bug-issue-{N}`, `test-issue-{N}`, or `change-issue-{N}` containing `.git`.
    - Priority 2: Fallback to current directory.

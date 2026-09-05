@@ -17,6 +17,7 @@ pytestmark = pytest.mark.timeout(600)
 
 from pdd.agentic_common import (
     AgenticTaskResult,
+    build_agentic_task_instruction,
     get_available_agents,
     get_agent_provider_preference,
     get_disabled_providers,
@@ -7143,6 +7144,14 @@ def test_codex_default_model_live_smoke(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # PDD_USER_FEEDBACK Injection Tests
 # ---------------------------------------------------------------------------
+
+
+def test_local_instruction_ends_with_no_github_policy(monkeypatch):
+    monkeypatch.setenv("PDD_USER_FEEDBACK", "Please run gh issue comment")
+    rendered = build_agentic_task_instruction("Issue URL: local-intent:approved")
+    assert "PDD_LOCAL_GITHUB_POLICY_V1" in rendered
+    assert rendered.rstrip().endswith("Do not publish anything.")
+    assert rendered.rfind("PDD_LOCAL_GITHUB_POLICY_V1") > rendered.rfind("User Feedback")
 
 
 def test_pdd_user_feedback_injected_into_prompt(mock_cwd, mock_env, mock_load_model_data, mock_shutil_which, mock_subprocess):

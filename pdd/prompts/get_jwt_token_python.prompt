@@ -14,7 +14,9 @@
     async def get_jwt_token(
         firebase_api_key: str,
         github_client_id: str,
-        app_name: str = "my-cli-app"
+        app_name: str = "my-cli-app",
+        no_browser: bool = False,
+        allow_device_flow: bool = True
     ) -> str:
         """
         Get a Firebase ID token using GitHub's Device Flow authentication.
@@ -23,6 +25,9 @@
             firebase_api_key: Firebase Web API key
             github_client_id: OAuth client ID for GitHub app
             app_name: Unique name for your CLI application (default: "my-cli-app")
+            no_browser: Skip automatic browser opening when true
+            allow_device_flow: When false, allow only injected, cached, or
+                silently refreshed credentials and fail before device-code auth
             
         Returns:
             str: A valid Firebase ID token
@@ -57,7 +62,11 @@
     - Path: ~/.pdd/jwt_cache (use pathlib Path.home() / ".pdd" / "jwt_cache")
     - Define module-level constant: JWT_CACHE_FILE = Path.home() / ".pdd" / "jwt_cache"
     - Define module-level constant: PDD_JWT_TOKEN_ENV = "PDD_JWT_TOKEN"
-    - At the very start of get_jwt_token(), return os.environ[PDD_JWT_TOKEN_ENV] if it is set. This injected-token path is for CI/staging and must bypass JWT cache, keyring, refresh, and device-flow authentication completely.
+    - At the very start of `get_jwt_token()`, enforce the shared GitHub access
+      guard. `PDD_LOCAL_ONLY=1` MUST raise `AuthError` before injected/cached
+      tokens, keyring access, refresh, or device flow. Otherwise return
+      `os.environ[PDD_JWT_TOKEN_ENV]` if set; this injected-token path is for
+      CI/staging and bypasses JWT cache, keyring, refresh, and device flow.
     - Format: JSON with fields: jwt, expires_at (unix timestamp), cached_at (unix timestamp)
     - Check cache FIRST before any keyring access
     - Return cached JWT immediately if valid (not expired, with 5-min buffer before expiration)
@@ -68,6 +77,12 @@
     - Implement helper functions: _get_cached_jwt() -> Optional[str], _cache_jwt(jwt: str, expires_in: int = 3600)
 
 % Authentication Flow:
+    0. `DeviceFlow.request_device_code`, `DeviceFlow.poll_for_token`, and
+       `get_jwt_token` MUST enforce `pdd.github_guard.require_github_access`
+       before any GitHub request; translate `GitHubAccessDisabled` to
+       `AuthError` for this module's public exception contract.
+       After silent refresh paths, `allow_device_flow=False` MUST also raise
+       `AuthError` before constructing `DeviceFlow`.
     1. Check ~/.pdd/jwt_cache for valid cached JWT → return immediately if valid (NO keyring access)
     2. If cache miss or expired:
         a. Check keyring for refresh token

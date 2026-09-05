@@ -13,6 +13,7 @@ from typing import Dict, Optional, Tuple
 import requests
 
 from ._keyring_timeout import _keyring_op_with_timeout
+from .github_guard import GitHubAccessDisabled, require_github_access
 
 logger = logging.getLogger(__name__)
 
@@ -293,6 +294,11 @@ class DeviceFlow:
             AuthError: If GitHub returns an error.
         """
         try:
+            require_github_access("GitHub device authentication")
+        except GitHubAccessDisabled as exc:
+            raise AuthError(str(exc)) from exc
+
+        try:
             response = requests.post(
                 self.device_code_url,
                 headers={"Accept": "application/json"},
@@ -323,6 +329,11 @@ class DeviceFlow:
             AuthError: If the user doesn't authenticate in time or cancels.
             TokenError: If there's an error exchanging the code for a token.
         """
+        try:
+            require_github_access("GitHub device authentication")
+        except GitHubAccessDisabled as exc:
+            raise AuthError(str(exc)) from exc
+
         start_time = time.time()
         current_interval = interval
         backoff_429 = 1  # Exponential backoff counter for HTTP 429 without JSON body
@@ -623,7 +634,8 @@ async def get_jwt_token(
     firebase_api_key: str,
     github_client_id: str,
     app_name: str = "my-cli-app",
-    no_browser: bool = False
+    no_browser: bool = False,
+    allow_device_flow: bool = True,
 ) -> str:
     """
     Get a Firebase ID token using GitHub's Device Flow authentication.
@@ -633,6 +645,8 @@ async def get_jwt_token(
         github_client_id: OAuth client ID for GitHub app
         app_name: Unique name for your CLI application
         no_browser: If True, skip automatic browser opening (for remote/SSH sessions)
+        allow_device_flow: If False, permit only injected, cached, or silently
+            refreshed credentials and fail before requesting a device code.
 
     Returns:
         str: A valid Firebase ID token
@@ -642,6 +656,11 @@ async def get_jwt_token(
         NetworkError: If there are connectivity issues
         TokenError: If token exchange fails
     """
+    try:
+        require_github_access("GitHub device authentication")
+    except GitHubAccessDisabled as exc:
+        raise AuthError(str(exc)) from exc
+
     injected_token = os.environ.get(PDD_JWT_TOKEN_ENV)
     if injected_token:
         return injected_token
@@ -672,6 +691,12 @@ async def get_jwt_token(
             if isinstance(e, RateLimitError):
                 raise
             print("Attempting re-authentication...")
+
+    if not allow_device_flow:
+        raise AuthError(
+            "GitHub device-flow authentication was not explicitly enabled. "
+            "Run `pdd auth login` or set PDD_ALLOW_GITHUB_AUTH=1."
+        )
 
     # Refuse interactive device-flow when no human can enter the verification code
     # (CI / Cloud Build / Docker). Upstream CloudConfig.get_jwt_token catches

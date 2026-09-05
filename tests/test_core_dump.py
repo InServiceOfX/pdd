@@ -615,6 +615,17 @@ def test_terminal_output_included_in_gist(tmp_path):
         assert 'core-dump.json' in gist_data['files']
 
 
+def test_local_only_blocks_direct_github_dump_helpers(tmp_path, monkeypatch):
+    """Even direct helper calls cannot cross the local-only boundary."""
+    from pdd.core.dump import _create_gist_with_files, _post_issue_to_github
+
+    monkeypatch.setenv("PDD_LOCAL_ONLY", "1")
+    with patch("pdd.core.dump.requests.post") as mock_post:
+        assert _create_gist_with_files("token", {}, tmp_path / "dump.json") is None
+        assert _post_issue_to_github("token", "owner/repo", "title", "body") is None
+    mock_post.assert_not_called()
+
+
 def test_terminal_output_in_issue_markdown(tmp_path):
     """Test that terminal output is included in the issue markdown."""
     from pdd.core.dump import _build_issue_markdown

@@ -313,7 +313,9 @@ R2 (MUST NOT): Print the diagnostic block when `quiet` is true.
      URL or a bare/`#` number and fetches `(title, body)` with the `gh` CLI
      (`gh issue view <n> --repo <owner/repo> --json title,body`), inferring the repo
      from the `origin` remote for bare numbers. Returns `(None, None, None)` on
-     failure. All subprocess/network errors are caught.
+     failure. All subprocess/network errors are caught. `_fetch_issue_via_gh`
+     MUST consult `pdd.github_guard` first and return `None` without subprocess
+     execution under `PDD_LOCAL_ONLY=1`.
    - `generate_user_story` writes the human Story file via
      `_llm_generate_story_markdown` (requires `## Story`) and then the contract
      file via `_generate_and_write_contract` / `_llm_generate_story_contract`

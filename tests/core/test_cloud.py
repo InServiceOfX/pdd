@@ -434,7 +434,7 @@ def test_get_jwt_token_success(mock_device_flow, mock_get_cached_jwt, clean_env)
     mock_device_flow.return_value = expected_token
 
     with patch.dict(
-        os.environ, {FIREBASE_API_KEY_ENV: "test_key", GITHUB_CLIENT_ID_ENV: "test_id"}
+        os.environ, {FIREBASE_API_KEY_ENV: "test_key", GITHUB_CLIENT_ID_ENV: "test_id", "PDD_ALLOW_GITHUB_AUTH": "1"}
     ):
         token = CloudConfig.get_jwt_token()
         assert token == expected_token
@@ -448,7 +448,7 @@ def test_get_jwt_token_auth_error(mock_device_flow, mock_get_cached_jwt, clean_e
     mock_device_flow.side_effect = AuthError("Auth failed")
 
     with patch.dict(
-        os.environ, {FIREBASE_API_KEY_ENV: "test_key", GITHUB_CLIENT_ID_ENV: "test_id"}
+        os.environ, {FIREBASE_API_KEY_ENV: "test_key", GITHUB_CLIENT_ID_ENV: "test_id", "PDD_ALLOW_GITHUB_AUTH": "1"}
     ):
         # Should not raise exception
         token = CloudConfig.get_jwt_token(verbose=True)
@@ -462,7 +462,7 @@ def test_get_jwt_token_network_error(mock_device_flow, mock_get_cached_jwt, clea
     mock_device_flow.side_effect = NetworkError("Connection failed")
 
     with patch.dict(
-        os.environ, {FIREBASE_API_KEY_ENV: "test_key", GITHUB_CLIENT_ID_ENV: "test_id"}
+        os.environ, {FIREBASE_API_KEY_ENV: "test_key", GITHUB_CLIENT_ID_ENV: "test_id", "PDD_ALLOW_GITHUB_AUTH": "1"}
     ):
         token = CloudConfig.get_jwt_token(verbose=True)
         assert token is None
@@ -516,7 +516,7 @@ def test_get_jwt_token_falls_through_to_device_flow_if_no_cache(
     mock_device_flow.return_value = expected_token
 
     with patch.dict(
-        os.environ, {FIREBASE_API_KEY_ENV: "test_key", GITHUB_CLIENT_ID_ENV: "test_id"}
+        os.environ, {FIREBASE_API_KEY_ENV: "test_key", GITHUB_CLIENT_ID_ENV: "test_id", "PDD_ALLOW_GITHUB_AUTH": "1"}
     ):
         token = CloudConfig.get_jwt_token()
         assert token == expected_token
@@ -683,6 +683,7 @@ def test_async_context_auth_error_references_correct_command(clean_env):
         {
             FIREBASE_API_KEY_ENV: "test-key",
             GITHUB_CLIENT_ID_ENV: "test-id",
+            "PDD_ALLOW_GITHUB_AUTH": "1",
         },
     ):
         # Simulate being in a running event loop and no cached token

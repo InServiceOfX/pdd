@@ -1305,6 +1305,10 @@ def _read_github_issue_prd(issue_url: str) -> str:
                 parts.append(body)
         return "\n\n".join(part for part in parts if part)
 
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        raise ValueError("GitHub CLI unavailable or disabled by PDD_LOCAL_ONLY=1")
     result = subprocess.run(
         ["gh", "issue", "view", issue_url, "--json", "title,body,comments"],
         capture_output=True,

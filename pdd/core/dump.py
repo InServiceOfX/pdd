@@ -375,8 +375,15 @@ def _get_github_token() -> Optional[str]:
 
     Returns None if no token found.
     """
+    from pdd.github_guard import find_gh, local_only_enabled
+    if local_only_enabled():
+        return None
+
     # Try GitHub CLI first
+    gh = find_gh()
     try:
+        if not gh:
+            raise FileNotFoundError("gh unavailable")
         result = subprocess.run(
             ["gh", "auth", "token"],
             capture_output=True,
@@ -423,6 +430,10 @@ def _create_gist_with_files(token: str, payload: Dict[str, Any], core_path: Path
 
     Returns the Gist URL on success, None on failure.
     """
+    from pdd.github_guard import local_only_enabled
+    if local_only_enabled():
+        return None
+
     try:
         # Prepare files for gist
         gist_files = {}
@@ -473,6 +484,10 @@ def _create_gist_with_files(token: str, payload: Dict[str, Any], core_path: Path
 
 def _post_issue_to_github(token: str, repo: str, title: str, body: str) -> Optional[str]:
     """Post an issue to GitHub, returning the issue URL on success, otherwise None."""
+    from pdd.github_guard import local_only_enabled
+    if local_only_enabled():
+        return None
+
     try:
         url = f"https://api.github.com/repos/{repo}/issues"
         headers = {

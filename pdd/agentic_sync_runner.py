@@ -202,6 +202,11 @@ def _run_gh_command(args: List[str], timeout: int = 30) -> Tuple[bool, str]:
         if served is not None:
             return True, served
 
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        return False, "GitHub CLI unavailable or disabled by PDD_LOCAL_ONLY=1"
+
     try:
         result = subprocess.run(
             ["gh"] + list(args),

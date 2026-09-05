@@ -910,6 +910,10 @@ def _infer_repo_slug() -> Optional[str]:
 
 def _fetch_issue_via_gh(repo: str, number: str) -> Optional[Tuple[str, str]]:
     """Fetch ``(title, body)`` for an issue via the ``gh`` CLI, or None."""
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        return None
     try:
         result = subprocess.run(
             ["gh", "issue", "view", number, "--repo", repo, "--json", "title,body"],

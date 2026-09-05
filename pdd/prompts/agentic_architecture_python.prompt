@@ -27,6 +27,8 @@ The `pdd/agentic_architecture.py` module serves as the CLI entry point for the a
     - `_parse_github_url(url) -> Optional[Tuple[str, str, int]]`: Extracts `owner`, `repo`, and `issue_number`.
     - Supported formats: `https://github.com/`, `https://www.github.com/`, or `github.com/` followed by `{owner}/{repo}/issues/{number}`.
 4. **GitHub Integration**:
+    - All `gh` lookup/execution and repository cloning MUST pass through
+      `pdd.github_guard`; `PDD_LOCAL_ONLY=1` fails before any subprocess.
     - Use `gh api` to fetch the issue: `repos/{owner}/{repo}/issues/{number}`.
     - Use `gh api {comments_url} --paginate` to fetch all comments.
     - Extract: `title`, `body`, `user.login`, and `comments_url`.

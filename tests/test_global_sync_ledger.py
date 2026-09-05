@@ -661,6 +661,14 @@ def test_global_sync_ledger_rejects_missing_required_gate_state(tmp_path: Path) 
         run(plan, output, source)
 
 
+def test_github_promotion_verifier_respects_local_only(monkeypatch) -> None:
+    monkeypatch.setenv("PDD_LOCAL_ONLY", "1")
+    verifier = GitHubPromotionVerifier()
+
+    with pytest.raises(LedgerError, match="disabled by PDD_LOCAL_ONLY=1"):
+        verifier._get("/repos/promptdriven/pdd/pulls/1")
+
+
 def test_global_sync_ledger_rejects_mismatched_remote_metadata(tmp_path: Path, monkeypatch) -> None:
     payload = _payload()
     _add_hosted_merge_claim(payload)

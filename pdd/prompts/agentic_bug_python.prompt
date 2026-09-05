@@ -15,6 +15,8 @@ CLI entry point for the agentic bug investigation workflow. Fetches a GitHub iss
    - `https://www.github.com/{owner}/{repo}/issues/{number}`
    - `github.com/{owner}/{repo}/issues/{number}`
 5. Fetch issue content via `gh api repos/{owner}/{repo}/issues/{number}` (requires `gh` CLI)
+   - Every GitHub CLI and GitHub clone helper MUST consult `pdd.github_guard`
+     first and MUST fail before subprocess execution when `PDD_LOCAL_ONLY=1`.
 6. Extract from issue: title (as issue_title), body, comments_url, user.login (as issue_author)
 7. Fetch comments via `gh api {comments_url}` with `--paginate` to get full context; if comments fetch fails, continue with just the issue body
 8. Ensure repo context: if `Path.cwd()` has no `.git`, clone the repo into cwd

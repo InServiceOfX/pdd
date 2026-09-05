@@ -33,7 +33,9 @@ them before reaching for `gh`.
 - Run a workflow against it: `pdd bug local:1`, `pdd fix local:1`, `pdd change local:1`,
   `pdd test local:1`, `pdd sync local:1`, `pdd checkup local:1`.
 - Steer a run mid-flight: `pdd work comment <n> --text "..."`.
-- Guarantee no GitHub access at all: `export PDD_LOCAL_ONLY=1`.
+- Guarantee no GitHub CLI/API, cloud SSO, Copilot, or agent-instruction access:
+  `export PDD_LOCAL_ONLY=1`. Ordinary commands never start GitHub device auth
+  unless `PDD_ALLOW_GITHUB_AUTH=1`; `pdd auth login` is the explicit login path.
 
 Details in [docs/intent.md](docs/intent.md) and
 [docs/local_work_items.md](docs/local_work_items.md).

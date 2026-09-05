@@ -76,6 +76,8 @@ To run the agentic workflows with no GitHub issue, no `gh`, and no network —
 `pdd work new` opens a local work item, `pdd bug local:1` runs against it, and
 `pdd work comment 1 --text "..."` steers the run mid-flight — see
 [docs/local_work_items.md](docs/local_work_items.md).
+The process-wide GitHub/authentication boundary is documented in
+[docs/github_auth_policy.md](docs/github_auth_policy.md).
 
 For pre-merge prompt and user-story quality (vague terms, vocabulary, optional LLM review), see [docs/prompt_lint.md](docs/prompt_lint.md).
 
@@ -3685,7 +3687,9 @@ PDD uses several environment variables to customize its behavior:
 - **`PDD_CONFIG_PATH`**: Override the default `.pddrc` file location (default: searches upward from current directory).
 - **`PDD_DEFAULT_CONTEXT`**: Default context to use when no context is detected (default: "default").
 - **`PDD_DEFAULT_LANGUAGE`**: Global default programming language when not specified in context (default: "python").
-- **`PDD_ALLOW_INTERACTIVE`**: Opt in to interactive-only providers during automatic model selection. Models marked `interactive_only=True` in `llm_model.csv` (e.g. `github_copilot/*` device-flow OAuth, `chatgpt/*` ChatGPT subscription / `codex login`, `lm_studio/*`, `ollama/*`) require interactive human auth or a running local server and hang in non-interactive contexts (Cloud Run, CI, library import). By default they are skipped in the automatic candidate cascade so headless contexts fast-fail instead of hanging. Set `PDD_ALLOW_INTERACTIVE=1` from a real terminal to re-include them. An explicitly configured base model (`PDD_MODEL_DEFAULT`) is always honored regardless of this setting.
+- **`PDD_ALLOW_INTERACTIVE`**: Opt in to non-GitHub interactive-only providers during automatic model selection. It does not authorize GitHub authentication.
+- **`PDD_ALLOW_GITHUB_AUTH`**: Explicitly permit an ordinary command to initiate GitHub-backed authentication, including PDD Cloud SSO or a GitHub Copilot device flow. Prefer the explicit `pdd auth login` command when authenticating PDD Cloud. A configured `PDD_MODEL_DEFAULT=github_copilot/...` does not grant this permission by itself.
+- **`PDD_LOCAL_ONLY`**: Hard-disable GitHub CLI/API access, cloud GitHub SSO, GitHub Copilot routing, and GitHub instructions in subprocess-agent tasks. This overrides all interactive/auth opt-ins and cached credentials.
 - **`PDD_SKIP_LOCAL_MODELS`**: Exclude local/interactive provider roots from automatic model fallback. Used by CI and cloud heal jobs to avoid hanging on providers that require a local server or device-flow login.
 - **`PDD_REPAIR_DIRECTIVE`**: Internal repair instruction set by the `pdd sync` conformance repair loop; users normally do not set this directly. When an architecture-conformance, public-surface, or test-churn gate fails, sync retries the generation step with this variable holding a directive that names the function(s) and the parameters/annotations/defaults to add or restore. `code_generator_main` reads it, appends an `<architecture_repair_directive>` block to the prompt, and forces full (non-incremental) generation so the repair is actually applied rather than skipped as an unchanged-prompt incremental no-op.
 

@@ -986,6 +986,7 @@ def test_llm_invoke_estimate_only_skips_interactive_provider_metadata_probes(
 
     monkeypatch.setenv("PDD_FORCE_LOCAL", "1")
     monkeypatch.setenv("PDD_MODEL_DEFAULT", "github_copilot/claude-opus-4.6-fast")
+    monkeypatch.setenv("PDD_ALLOW_GITHUB_AUTH", "1")
 
     with patch("pdd.llm_invoke.count_tokens_for_messages", return_value=100), \
          patch("pdd.llm_invoke.get_context_limit", side_effect=AssertionError("context probe")), \
@@ -5658,6 +5659,7 @@ class TestInteractiveOnlyFilter:
 
     def test_interactive_included_with_opt_in(self, llm_mod, tmp_path, monkeypatch):
         monkeypatch.setenv("PDD_ALLOW_INTERACTIVE", "1")
+        monkeypatch.setenv("PDD_ALLOW_GITHUB_AUTH", "1")
         # This test isolates the interactive opt-in. PR auto-heal deliberately
         # exports PDD_SKIP_LOCAL_MODELS, which is a separate stronger policy.
         monkeypatch.delenv("PDD_SKIP_LOCAL_MODELS", raising=False)
@@ -5668,17 +5670,21 @@ class TestInteractiveOnlyFilter:
         assert "chatgpt/gpt-5.4" in names
         assert "lm_studio/qwen3-coder-next" in names
 
-    def test_explicit_interactive_base_is_honored(self, llm_mod, tmp_path, monkeypatch):
-        # No opt-in, but the user explicitly configured an interactive base:
-        # honor it (it's an implicit opt-in), while still excluding the other
-        # interactive rows from the automatic cascade.
+    def test_explicit_copilot_base_requires_github_auth_opt_in(self, llm_mod, tmp_path, monkeypatch):
+        # A model default chooses routing, but it does not authorize an
+        # interactive GitHub device flow.
         monkeypatch.delenv("PDD_ALLOW_INTERACTIVE", raising=False)
         df = self._make_df(llm_mod, tmp_path)
-        candidates = llm_mod._select_model_candidates(0.5, "github_copilot/gpt-5", df)
-        names = [c["model"] for c in candidates]
-        assert "github_copilot/gpt-5" in names
-        assert "chatgpt/gpt-5.4" not in names
-        assert "lm_studio/qwen3-coder-next" not in names
+        with pytest.raises(ValueError):
+            llm_mod._select_model_candidates(0.5, "github_copilot/gpt-5", df)
+
+    def test_local_only_overrides_all_copilot_opt_ins(self, llm_mod, tmp_path, monkeypatch):
+        monkeypatch.setenv("PDD_ALLOW_INTERACTIVE", "1")
+        monkeypatch.setenv("PDD_ALLOW_GITHUB_AUTH", "1")
+        monkeypatch.setenv("PDD_LOCAL_ONLY", "1")
+        df = self._make_df(llm_mod, tmp_path)
+        names = [c["model"] for c in llm_mod._select_model_candidates(0.5, "gpt-4", df)]
+        assert "github_copilot/gpt-5" not in names
 
     def test_chatgpt_excluded_by_default(self, llm_mod, tmp_path, monkeypatch):
         # Regression for the #1164 review: chatgpt/* subscription rows use the
@@ -5716,7 +5722,7 @@ class TestInteractiveOnlyFilter:
         assert int(df["interactive_only"].sum()) == 0
         candidates = llm_mod._select_model_candidates(0.5, "gpt-4", df)
         names = [c["model"] for c in candidates]
-        assert "github_copilot/gpt-5" in names
+        assert "github_copilot/gpt-5" not in names
         assert "chatgpt/gpt-5.4" in names
         assert "lm_studio/qwen3-coder-next" in names
 
@@ -8803,6 +8809,7 @@ def test_github_copilot_allowed_when_token_present_no_pdd_force(tmp_path, monkey
     from pdd.llm_invoke import _ensure_api_key
 
     monkeypatch.delenv("PDD_FORCE", raising=False)
+    monkeypatch.setenv("PDD_ALLOW_GITHUB_AUTH", "1")
     token_dir = tmp_path / "token_dir"
     token_dir.mkdir(parents=True)
     (token_dir / "api-key.json").write_text("{\"fake\": \"token\"}")

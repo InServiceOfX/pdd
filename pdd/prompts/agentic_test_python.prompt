@@ -15,6 +15,8 @@ CLI entry point for the agentic test generation workflow. Fetches a GitHub issue
    - `https://www.github.com/{owner}/{repo}/issues/{number}`
    - `github.com/{owner}/{repo}/issues/{number}`
 5. Fetch issue content via `gh api repos/{owner}/{repo}/issues/{number}` (requires `gh` CLI)
+   - Every GitHub CLI and GitHub clone helper MUST consult `pdd.github_guard`
+     first and MUST fail before subprocess execution when `PDD_LOCAL_ONLY=1`.
 6. Extract from issue: title (as issue_title), body, labels, state, comments_url, user.login (as issue_author)
 7. Fetch comments via `gh api {comments_url}` to get full context
 8. Clone/checkout the repository to a temp directory if not already in it

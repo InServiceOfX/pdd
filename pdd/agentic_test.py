@@ -35,7 +35,8 @@ def _check_gh_cli(issue_ref: str = "") -> bool:
     """
     if local_work_items.is_local_ref(issue_ref):
         return True
-    return shutil.which("gh") is not None
+    from pdd.github_guard import find_gh
+    return find_gh() is not None
 
 
 def _parse_github_url(url: str) -> Optional[Tuple[str, str, int]]:
@@ -64,6 +65,11 @@ def _parse_github_url(url: str) -> Optional[Tuple[str, str, int]]:
 
     # Expected path structure: owner/repo/issues/number
     # We look for the 'issues' segment to anchor our parsing
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        return None, "GitHub CLI unavailable or disabled by PDD_LOCAL_ONLY=1"
+
     try:
         if "issues" in path_parts:
             issues_index = path_parts.index("issues")
@@ -107,6 +113,10 @@ def _fetch_issue_data(owner: str, repo: str, number: int) -> Tuple[Optional[Dict
             meta_info + "\n" + (issue_json.get("body") or "") + comments_text
         )
         return issue_json, None
+
+    from pdd.github_guard import local_only_enabled
+    if local_only_enabled():
+        return None, "GitHub CLI unavailable or disabled by PDD_LOCAL_ONLY=1"
 
     try:
         # Fetch issue details
@@ -180,6 +190,10 @@ def _ensure_repo_context(owner: str, repo: str, cwd: Path, quiet: bool) -> Tuple
                 return True, str(cwd)
     except FileNotFoundError:
         pass  # git not installed or not in path, handled later
+
+    from pdd.github_guard import github_access_allowed
+    if not github_access_allowed():
+        return False, "GitHub repository access is disabled by PDD_LOCAL_ONLY=1"
 
     # If we are not in the repo, clone it into a temp dir.
     try:

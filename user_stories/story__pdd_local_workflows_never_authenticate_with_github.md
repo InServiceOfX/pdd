@@ -1,0 +1,9 @@
+<!-- pdd-story-status: approved-by-user-2026-09-05 -->
+<!-- pdd-story-prompts: prompts/github_guard_python.prompt, prompts/local_work_items_python.prompt, prompts/get_jwt_token_python.prompt, prompts/core/cloud_python.prompt, prompts/core/dump_python.prompt, prompts/llm_invoke_python.prompt, prompts/fix_main_python.prompt, prompts/sync_main_python.prompt, prompts/agentic_common_python.prompt, prompts/agentic_bug_python.prompt, prompts/agentic_test_python.prompt, prompts/agentic_e2e_fix_python.prompt, prompts/agentic_change_python.prompt, prompts/agentic_change_orchestrator_python.prompt, prompts/agentic_architecture_python.prompt, prompts/agentic_architecture_orchestrator_python.prompt, prompts/agentic_sync_runner_python.prompt, prompts/ci_validation_python.prompt, prompts/incremental_prd_architecture_python.prompt, prompts/user_story_tests_python.prompt -->
+<!-- pdd-story-dev-units: github_guard_python.prompt, local_work_items_python.prompt, get_jwt_token_python.prompt, cloud_python.prompt, dump_python.prompt, llm_invoke_python.prompt, fix_main_python.prompt, sync_main_python.prompt, agentic_common_python.prompt, agentic_bug_python.prompt, agentic_test_python.prompt, agentic_e2e_fix_python.prompt, agentic_change_python.prompt, agentic_change_orchestrator_python.prompt, agentic_architecture_python.prompt, agentic_architecture_orchestrator_python.prompt, agentic_sync_runner_python.prompt, ci_validation_python.prompt, incremental_prd_architecture_python.prompt, user_story_tests_python.prompt -->
+
+# User Story: Local PDD workflows never authenticate with GitHub unexpectedly
+
+## Story
+
+As a developer using local or inline PDD workflows, I want requests, state, steering, model selection, and subprocess-agent instructions to remain local without initiating GitHub access or authentication, so that automation cannot pause for an unexpected device login or publish anything unless I explicitly choose a remote GitHub workflow.

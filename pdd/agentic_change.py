@@ -34,7 +34,8 @@ def _check_gh_cli(issue_ref: str = "") -> bool:
     """
     if local_work_items.is_local_ref(issue_ref):
         return True
-    return shutil.which("gh") is not None
+    from pdd.github_guard import local_only_enabled
+    return not local_only_enabled() and shutil.which("gh") is not None
 
 
 def _parse_issue_url(url: str) -> Optional[Tuple[str, str, int]]:
@@ -101,6 +102,11 @@ def _run_gh_command(args: List[str], timeout: Optional[int] = None) -> Tuple[boo
         if served is not None:
             return True, served
 
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        return False, "GitHub CLI unavailable or disabled by PDD_LOCAL_ONLY=1"
+
     try:
         result = subprocess.run(
             ["gh"] + args,
@@ -163,8 +169,12 @@ def _setup_repository(owner: str, repo: str, quiet: bool) -> Path:
     if not quiet:
         console.print(f"[blue]Cloning {owner}/{repo} to temporary directory: {temp_dir}[/blue]")
 
-    # Use gh repo clone to handle authentication automatically
+    # Use gh repo clone only for an explicitly remote workflow.
     clone_cmd = ["repo", "clone", f"{owner}/{repo}", "."]
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        raise RuntimeError("GitHub CLI unavailable or disabled by PDD_LOCAL_ONLY=1")
     
     # We run this in the temp_dir
     try:

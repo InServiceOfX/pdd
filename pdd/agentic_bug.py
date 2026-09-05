@@ -43,7 +43,8 @@ def _check_gh_cli(issue_ref: str = "") -> bool:
     """
     if local_work_items.is_local_ref(issue_ref):
         return True
-    return shutil.which("gh") is not None
+    from pdd.github_guard import local_only_enabled
+    return not local_only_enabled() and shutil.which("gh") is not None
 
 
 def _parse_github_url(url: str) -> Optional[Tuple[str, str, int]]:
@@ -110,6 +111,10 @@ def _fetch_issue_data(owner: str, repo: str, number: int) -> Tuple[Optional[Dict
             return None, f"Local work item {number} not found"
         return local_work_items.github_shaped_issue(item), None
 
+    from pdd.github_guard import find_gh
+    if not find_gh():
+        return None, "GitHub CLI unavailable or disabled by PDD_LOCAL_ONLY=1"
+
     cmd = [
         "gh", "api",
         f"repos/{owner}/{repo}/issues/{number}",
@@ -152,6 +157,10 @@ def _fetch_comments(comments_url: str) -> str:
 
     # The comments_url from API is full URL like https://api.github.com/repos/...
     # gh api expects path relative to api root or full URL.
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        return ""
     cmd = ["gh", "api", comments_url, "--paginate"]
 
     try:
@@ -192,6 +201,10 @@ def _ensure_repo_context(owner: str, repo: str, cwd: Path, quiet: bool = False) 
     # the only repository involved.
     if local_work_items.is_local_owner(owner):
         return True
+
+    from pdd.github_guard import github_access_allowed
+    if not github_access_allowed():
+        return False
 
     # Attempt clone
     repo_url = f"https://github.com/{owner}/{repo}.git"

@@ -58,11 +58,11 @@ pdd fix local:1        pdd test local:1        pdd checkup local:1
 of those — a GitHub URL, a prompt filename, a bare path — routes exactly as it
 did before, so nothing about existing usage changes.
 
-## Guaranteeing no `gh`
+## Guaranteeing no GitHub access or authentication
 
-Set `PDD_LOCAL_ONLY=1` and the `gh` binary is reported as absent to every
-GitHub helper in the agentic layer, so each one takes its existing "no gh"
-branch instead of shelling out:
+Set `PDD_LOCAL_ONLY=1` and the process-wide guard disables GitHub CLI/API
+access, PDD Cloud's GitHub SSO, GitHub Copilot model routing, and GitHub
+instructions passed to subprocess agents:
 
 ```bash
 export PDD_LOCAL_ONLY=1
@@ -70,10 +70,16 @@ pdd bug local:1
 ```
 
 This is a **backstop, not the mechanism**. Local work items already avoid `gh`
-by routing on the work item's owner; `PDD_LOCAL_ONLY` additionally covers code
-paths that predate them, so an agent cannot silently reach for the GitHub CLI
-on a path nobody thought to check. Use it when the requirement is "this project
-must never talk to GitHub", rather than "this particular run is local".
+by routing on the work item's owner; local instructions also receive a final
+policy telling the agent to return its report locally instead of following
+legacy `gh issue comment` text. `PDD_LOCAL_ONLY` additionally covers older code
+paths and authentication fallbacks. Use it when the requirement is "this
+project must never talk to GitHub", rather than "this particular run is local".
+
+Outside local-only mode, ordinary commands still do not initiate GitHub device
+authentication implicitly. Use `pdd auth login` deliberately, or set
+`PDD_ALLOW_GITHUB_AUTH=1` for an intentional device-flow invocation. See
+[`docs/github_auth_policy.md`](github_auth_policy.md).
 
 Pull-request discovery is skipped entirely for a local work item — there is no
 remote branch to open a PR against — instead of failing or querying GitHub.

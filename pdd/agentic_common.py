@@ -44,6 +44,7 @@ from enum import Enum
 from rich.console import Console
 
 from pdd import local_work_items
+from pdd.github_guard import instruction_is_local, localize_agent_instruction
 from pdd.local_work_items import is_local_owner, local_only_enabled
 from pdd.routing_policy import (
     canonicalize_claude_cli_model,
@@ -5317,10 +5318,11 @@ def build_agentic_task_instruction(
                 f"{_steer_body_for_llm(steer.body)}\n"
             )
 
-    return (
+    composed = (
         f"{instruction}{feedback_section}{steering_section}\n\n"
         "You have full file access to explore and modify files as needed."
     )
+    return localize_agent_instruction(composed)
 
 
 @provider_failure_workflow
@@ -8112,6 +8114,11 @@ def _run_with_provider(
 
     # Read prompt content for providers that pipe via stdin
     prompt_content = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
+    if instruction_is_local(prompt_content):
+        # Provider children inherit the same hard boundary. This protects
+        # nested PDD invocations in addition to the final prompt override that
+        # tells the agent itself not to invoke GitHub.
+        env["PDD_LOCAL_ONLY"] = "1"
 
     # Reasoning-effort plumbing. Three input paths converge here, in
     # precedence order:

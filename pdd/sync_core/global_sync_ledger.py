@@ -84,6 +84,12 @@ class GitHubPromotionVerifier:  # pylint: disable=too-few-public-methods
         self._responses: dict[str, dict[str, Any]] = {}
 
     def _get(self, path: str) -> dict[str, Any]:
+        from pdd.github_guard import GitHubAccessDisabled, require_github_access
+
+        try:
+            require_github_access("protected GitHub promotion verification")
+        except GitHubAccessDisabled as exc:
+            raise LedgerError(str(exc)) from exc
         if path in self._responses:
             return self._responses[path]
         token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")

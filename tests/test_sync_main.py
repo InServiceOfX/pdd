@@ -2592,6 +2592,40 @@ class TestAutoSubmitSkipInCloud:
     @patch("requests.post")
     @patch("pdd.get_jwt_token.get_jwt_token")
     @patch("pdd.core.cloud.CloudConfig.is_running_in_cloud", return_value=False)
+    def test_auto_submit_does_not_authorize_device_flow_implicitly(
+        self, _mock_in_cloud, mock_get_jwt, mock_post, tmp_path, monkeypatch
+    ):
+        """An ordinary successful sync may not turn auto-submit into OAuth."""
+        from pdd.get_jwt_token import AuthError
+
+        monkeypatch.delenv("PDD_FORCE_LOCAL", raising=False)
+        monkeypatch.delenv("PDD_ALLOW_GITHUB_AUTH", raising=False)
+
+        async def _refuse_device_flow(*_args, **kwargs):
+            assert kwargs["allow_device_flow"] is False
+            raise AuthError("device flow not explicitly enabled")
+
+        mock_get_jwt.side_effect = _refuse_device_flow
+        pdd_files = {
+            key: tmp_path / filename
+            for key, filename in {
+                "prompt": "x.prompt",
+                "code": "x.py",
+                "example": "x_example.py",
+                "test": "test_x.py",
+            }.items()
+        }
+        for path in pdd_files.values():
+            path.write_text("placeholder")
+
+        _real_auto_submit_example("x", "python", pdd_files, self._make_ctx())
+
+        mock_get_jwt.assert_called_once()
+        mock_post.assert_not_called()
+
+    @patch("requests.post")
+    @patch("pdd.get_jwt_token.get_jwt_token")
+    @patch("pdd.core.cloud.CloudConfig.is_running_in_cloud", return_value=False)
     def test_submit_uses_cloudconfig_endpoint(
         self, mock_in_cloud, mock_get_jwt, mock_post, tmp_path, monkeypatch
     ):

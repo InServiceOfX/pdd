@@ -379,6 +379,9 @@ def _gh_pr_list_candidates(
     base_args: Sequence[str], cwd: Optional[Path] = None
 ) -> List[dict]:
     """Return PR list entries from a supported bounded gh query."""
+    from pdd.github_guard import find_gh
+    if not find_gh():
+        return []
     try:
         result = subprocess.run(
             [*base_args, "--limit", "1000"],
@@ -413,6 +416,9 @@ def _pr_url_matches_current_head(
     local_oid = _git_head_oid(cwd)
     remote_oid = _remote_branch_oid(head_branch, cwd)
     if not local_oid or not remote_oid or local_oid.lower() != remote_oid.lower():
+        return False
+    from pdd.github_guard import find_gh
+    if not find_gh():
         return False
     try:
         result = subprocess.run(
@@ -2161,6 +2167,10 @@ def _fetch_issue_updated_at(repo_owner: str, repo_name: str, issue_number: int) 
             return ""
         return str(item.get("updated_at") or "") if item else ""
 
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        return ""
     try:
         result = subprocess.run(
             ["gh", "api", f"repos/{repo_owner}/{repo_name}/issues/{issue_number}",
@@ -2333,6 +2343,10 @@ def _check_existing_pr(repo_owner: str, repo_name: str, issue_number: int) -> Op
         return None
     canonical = f"change/issue-{issue_number}"
     fallback_prefix = f"{canonical}-job-"
+    from pdd.github_guard import find_gh
+    gh = find_gh()
+    if not gh:
+        return None
     try:
         result = subprocess.run(
             ["gh", "pr", "list", "--repo", f"{repo_owner}/{repo_name}",

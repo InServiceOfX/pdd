@@ -36,7 +36,8 @@ def _check_gh_cli(issue_ref: str = "") -> bool:
     """
     if local_work_items.is_local_ref(issue_ref):
         return True
-    return shutil.which("gh") is not None
+    from pdd.github_guard import local_only_enabled
+    return not local_only_enabled() and shutil.which("gh") is not None
 
 
 def _parse_github_url(url: str) -> Optional[Tuple[str, str, int]]:
@@ -86,6 +87,10 @@ def _fetch_issue_data(
         if item is None:
             return None, f"Local work item {number} not found"
         return local_work_items.github_shaped_issue(item), None
+
+    from pdd.github_guard import find_gh
+    if not find_gh():
+        return None, "GitHub CLI unavailable or disabled by PDD_LOCAL_ONLY=1"
 
     command = [
         "gh",
@@ -143,6 +148,10 @@ def _fetch_issue_comments(comments_url: str) -> str:
             f"{c.get('body', '')}\n"
             for c in comments
         )
+
+    from pdd.github_guard import find_gh
+    if not find_gh():
+        return ""
 
     command = [
         "gh",

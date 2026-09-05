@@ -47,14 +47,15 @@
   },
   {
     "reason": "Provides shared agentic CLI execution across Claude, Gemini/Antigravity, Codex, and OpenCode, with mid-run steering and state persistence.",
-    "description": "Common functions for running agentic tasks: provider preference, availability detection, background-safe subprocess orchestration with framing-aware early interactive-UI detection that excludes quoted values in structured provider JSON, producer-owned typed provider-failure metadata and authenticated atomic side-channel publication, JSON output parsing, cost tracking, GitHub state persistence, progress tracking, and OpenCode model resolution.",
+    "description": "Common functions for running agentic tasks: provider preference, availability detection, background-safe subprocess orchestration with framing-aware early interactive-UI detection that excludes quoted values in structured provider JSON, producer-owned typed provider-failure metadata and authenticated atomic side-channel publication, JSON output parsing, cost tracking, local-safe GitHub state persistence, progress tracking, and OpenCode model resolution. Local agent instructions receive the final process-wide no-GitHub policy and child processes inherit local-only mode.",
     "dependencies": [
       "llm_invoke_python.prompt",
       "auth_service_python.prompt",
       "_keyring_timeout_python.prompt",
       "git_porcelain_python.prompt",
       "routing_policy_python.prompt",
-      "codex_subscription_python.prompt"
+      "codex_subscription_python.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 5,
     "filename": "agentic_common_python.prompt",
@@ -682,9 +683,10 @@
   },
   {
     "reason": "Handles authentication for PDD cloud services.",
-    "description": "Obtains and caches JWT tokens for cloud API access. Supports Firebase authentication and environment-aware JWT cache validation so staging/prod cached tokens are not reused against the wrong PDD_CLOUD_URL target. Fails closed before device-flow authentication for PDD_FORCE, PDD_NO_INTERACTIVE, explicitly false PDD_ALLOW_INTERACTIVE, or truthy CI unless truthy PDD_ALLOW_INTERACTIVE explicitly opts into an attended login.",
+    "description": "Obtains and caches JWT tokens for cloud API access. Supports Firebase authentication and environment-aware JWT cache validation so staging/prod cached tokens are not reused against the wrong PDD_CLOUD_URL target. PDD_LOCAL_ONLY hard-denies every GitHub device-flow entry point before credentials or network access; ordinary callers can disable device-code fallback while retaining silent refresh. Also fails closed for PDD_FORCE, PDD_NO_INTERACTIVE, explicitly false PDD_ALLOW_INTERACTIVE, or truthy CI unless truthy PDD_ALLOW_INTERACTIVE explicitly opts into an attended login.",
     "dependencies": [
-      "_keyring_timeout_python.prompt"
+      "_keyring_timeout_python.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 12,
     "filename": "get_jwt_token_python.prompt",
@@ -1002,7 +1004,9 @@
   {
     "reason": "Orchestrates agentic bug fixing workflow.",
     "description": "Main entry point for the agentic bug fixing pipeline.",
-    "dependencies": [],
+    "dependencies": [
+      "github_guard_python.prompt"
+    ],
     "priority": 20,
     "filename": "agentic_bug_python.prompt",
     "filepath": "pdd/agentic_bug.py",
@@ -2957,7 +2961,8 @@
       "auth_service_python.prompt",
       "core/cloud_python.prompt",
       "compressed_sync_context_python.prompt",
-      "mock_contract_validation_python.prompt"
+      "mock_contract_validation_python.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 66,
     "filename": "fix_main_python.prompt",
@@ -5488,7 +5493,8 @@
       "core/cloud_python.prompt",
       "code_generator_main_python.prompt",
       "agentic_sync_runner_python.prompt",
-      "compressed_sync_context_python.prompt"
+      "compressed_sync_context_python.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 148,
     "filename": "sync_main_python.prompt",
@@ -5607,8 +5613,11 @@
   },
   {
     "reason": "Orchestrates the multi-step agentic architecture workflow with gates, validation, state persistence, and context accumulation.",
-    "description": "Multi-step orchestrator for architecture generation from a GitHub issue PRD. Runs the gated Step 1-13 workflow, including complexity and codebase scans, completeness gates, architecture self-review, shared context-doc merge, prompt generation, cross-file and cross-issue consistency checks, validation/fix loops, state persistence, target-directory support, and post-processing via render_mermaid.",
-    "dependencies": [],
+    "description": "Multi-step orchestrator for architecture generation from a remote GitHub issue or a local-intent PRD. Runs the gated Step 1-13 workflow, including complexity and codebase scans, completeness gates, architecture self-review, shared context-doc merge, prompt generation, cross-file and cross-issue consistency checks, validation/fix loops, local-safe state persistence, target-directory support, and post-processing via render_mermaid.",
+    "dependencies": [
+      "agentic_common_python.prompt",
+      "github_guard_python.prompt"
+    ],
     "priority": 152,
     "filename": "agentic_architecture_orchestrator_python.prompt",
     "filepath": "pdd/agentic_architecture_orchestrator.py",
@@ -5722,7 +5731,8 @@
     "dependencies": [
       "agentic_architecture_orchestrator_python.prompt",
       "incremental_prd_architecture_python.prompt",
-      "architecture_registry_python.prompt"
+      "architecture_registry_python.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 209,
     "filename": "agentic_architecture_python.prompt",
@@ -5846,7 +5856,8 @@
       "architecture_sync_python.prompt",
       "change_python.prompt",
       "detect_change_python.prompt",
-      "incremental_prd_architecture_patch_LLM.prompt"
+      "incremental_prd_architecture_patch_LLM.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 208,
     "filename": "incremental_prd_architecture_python.prompt",
@@ -6360,7 +6371,8 @@
       "architecture_sync_python.prompt",
       "agentic_common_python.prompt",
       "git_porcelain_python.prompt",
-      "pre_checkup_gate_python.prompt"
+      "pre_checkup_gate_python.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 168,
     "filename": "agentic_change_orchestrator_python.prompt",
@@ -6482,7 +6494,8 @@
     "description": "Entry point for the agentic change command. Parses issue URL, extracts issue metadata from GitHub, and delegates to the change orchestrator. Supports `clean_restart` to ignore any persisted solving state and start a fresh full pdd-issue flow from the target base branch.",
     "dependencies": [
       "agentic_change_orchestrator_python.prompt",
-      "agentic_common_python.prompt"
+      "agentic_common_python.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 169,
     "filename": "agentic_change_python.prompt",
@@ -6874,7 +6887,9 @@
   {
     "reason": "CLI entry point for the 11-step agentic E2E fix workflow; orchestrates GitHub issue data fetching and worktree discovery.",
     "description": "Entry point for the agentic E2E fix command. Parses issue URL, finds associated worktree, and delegates to the E2E fix orchestrator.",
-    "dependencies": [],
+    "dependencies": [
+      "github_guard_python.prompt"
+    ],
     "priority": 184,
     "filename": "agentic_e2e_fix_python.prompt",
     "filepath": "pdd/agentic_e2e_fix.py",
@@ -7258,7 +7273,9 @@
   {
     "reason": "Autonomously generates UI tests from GitHub issue descriptions.",
     "description": "Entry point for the agentic test command. Parses issue URL, extracts issue metadata, and delegates to the test orchestrator. Supports both Playwright and Cypress test frameworks.",
-    "dependencies": [],
+    "dependencies": [
+      "github_guard_python.prompt"
+    ],
     "priority": 197,
     "filename": "agentic_test_python.prompt",
     "filepath": "pdd/agentic_test.py",
@@ -8059,7 +8076,8 @@
       "agentic_langtest_python.prompt",
       "agentic_test_orchestrator_python.prompt",
       "sync_order_python.prompt",
-      "resolved_sync_unit_python.prompt"
+      "resolved_sync_unit_python.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 216,
     "filename": "agentic_sync_runner_python.prompt",
@@ -8530,7 +8548,8 @@
     "reason": "Module providing CI polling, log retrieval, and fix-iteration loop infrastructure for post-push CI validation.",
     "description": "Module providing CI polling, log retrieval, and fix-iteration loop infrastructure for post-push CI validation.",
     "dependencies": [
-      "agentic_common_python.prompt"
+      "agentic_common_python.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 221,
     "filename": "ci_validation_python.prompt",
@@ -9654,9 +9673,10 @@
   },
   {
     "reason": "Centralized cloud config: routes endpoint URLs (incl. submitExample) and JWT auth honoring PDD_CLOUD_URL.",
-    "description": "CloudConfig provides static methods for cloud URL resolution (get_base_url, get_endpoint_url with CLOUD_ENDPOINTS map including submitExample), environment inference (ensure_default_env), JWT auth (get_jwt_token), and cloud-environment detection (is_running_in_cloud, is_cloud_enabled). JWT auth delegates to the shared helper, preserving injected/cache/keyring-refresh credentials while explicit machine flags cause the helper to refuse device flow. Module-level get_cloud_timeout() reads PDD_CLOUD_TIMEOUT, and get_cloud_request_timeout() returns the requests timeout tuple used by cloud POST calls. Used by sync/fix auto-submit so PDD_CLOUD_URL is honored across staging/prod/local (#859).",
+    "description": "CloudConfig provides static methods for cloud URL resolution (get_base_url, get_endpoint_url with CLOUD_ENDPOINTS map including submitExample), environment inference (ensure_default_env), JWT auth (get_jwt_token), and cloud-environment detection (is_running_in_cloud, is_cloud_enabled). JWT auth preserves injected/cache/keyring-refresh credentials outside local-only mode, requires explicit GitHub-auth opt-in before device flow, and hard-disables cloud auth under PDD_LOCAL_ONLY. Module-level get_cloud_timeout() reads PDD_CLOUD_TIMEOUT, and get_cloud_request_timeout() returns the requests timeout tuple used by cloud POST calls. Used by sync/fix auto-submit so PDD_CLOUD_URL is honored across staging/prod/local (#859).",
     "dependencies": [
-      "auth_service_python.prompt"
+      "auth_service_python.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 5,
     "filename": "core/cloud_python.prompt",
@@ -9846,10 +9866,11 @@
   },
   {
     "reason": "Provides unified LLM invocation with provider retries, context checks, and dry-run cost estimates.",
-    "description": "Provides unified LLM invocation across all PDD operations with provider abstraction, retries, and context window validation.",
+    "description": "Provides unified LLM invocation across all PDD operations with provider abstraction, retries, context-window validation, and an explicit GitHub-auth boundary that excludes Copilot unless opted in and always excludes it under local-only mode.",
     "dependencies": [
       "path_resolution_python.prompt",
-      "server/token_counter_python.prompt"
+      "server/token_counter_python.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 236,
     "filename": "llm_invoke_python.prompt",
@@ -10055,7 +10076,8 @@
       "contract_ir_python.prompt",
       "detect_change_python.prompt",
       "change_main_python.prompt",
-      "llm_invoke_python.prompt"
+      "llm_invoke_python.prompt",
+      "github_guard_python.prompt"
     ],
     "priority": 241,
     "filename": "user_story_tests_python.prompt",
@@ -12560,6 +12582,48 @@
           {
             "name": "render_apply_result",
             "signature": "(result: IntentApplyResult) -> str",
+            "returns": "str"
+          }
+        ]
+      }
+    },
+    "position": null
+  },
+  {
+    "reason": "Makes local PDD workflows incapable of unexpectedly reaching GitHub or initiating GitHub-backed authentication.",
+    "description": "Dependency-light process policy for local-only detection, explicit GitHub-auth opt-in, guarded gh discovery, and localization of subprocess-agent instructions.",
+    "dependencies": [],
+    "priority": 1,
+    "filename": "github_guard_python.prompt",
+    "filepath": "pdd/github_guard.py",
+    "tags": [
+      "github",
+      "local",
+      "security",
+      "python"
+    ],
+    "interface": {
+      "type": "module",
+      "module": {
+        "functions": [
+          {
+            "name": "local_only_enabled",
+            "signature": "() -> bool",
+            "returns": "bool"
+          },
+          {
+            "name": "github_auth_opted_in",
+            "signature": "() -> bool",
+            "returns": "bool"
+          },
+          {
+            "name": "find_gh",
+            "signature": "() -> Optional[str]",
+            "returns": "Optional[str]"
+          },
+          {
+            "name": "localize_agent_instruction",
+            "signature": "(instruction: str) -> str",
             "returns": "str"
           }
         ]

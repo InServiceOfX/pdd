@@ -24,7 +24,13 @@
        `PDD_FORCE` or false `PDD_ALLOW_INTERACTIVE`; the delegated helper also
        enforces `PDD_NO_INTERACTIVE` after silent keyring refresh so machine
        invocations fail closed without sacrificing cached refreshes.
-     - Fall back to device flow auth via `get_jwt_token` from `..get_jwt_token`
+     - Never start device flow unless `PDD_ALLOW_GITHUB_AUTH=1`; an explicit
+       `pdd auth login` remains the preferred interactive entry point
+     - Pass `allow_device_flow=github_auth_opted_in()` to the low-level helper
+       so a disappearing/invalid refresh credential cannot fall through into
+       an unapproved device flow
+     - `PDD_LOCAL_ONLY=1` disables cloud GitHub SSO even when credentials or a
+       cached token exist
      - Before device flow, detect running event loop via `asyncio.get_running_loop()`;
        if in async context, raise AuthError directing user to run `pdd auth login` first
      - Always display auth errors to user (critical for debugging auth issues)
@@ -40,6 +46,7 @@
      - Check for `FUNCTIONS_EMULATOR` env var (Firebase emulator)
   7) `is_cloud_enabled()`: Return True if cloud features are available. Cloud is DISABLED if:
      - `PDD_FORCE_LOCAL` is set (respects --local CLI flag)
+     - `PDD_LOCAL_ONLY` is set
      - Running inside cloud environment (prevents infinite loops)
      Cloud is ENABLED if:
      - `PDD_JWT_TOKEN` is set (injected token for testing/CI), OR
