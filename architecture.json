@@ -1,5 +1,20 @@
 [
   {
+    "reason": "Process prompts exclusively on a configured local llama.cpp server without provider keys or cloud fallback.",
+    "description": "Offline local endpoint configuration discovery and key-optional OpenAI-compatible HTTP transport shared by macOS Metal and Linux CUDA servers; validates text/structured/batch output, separates reasoning, enforces limits, and supports offline zero-API-charge estimates.",
+    "dependencies": [],
+    "priority": 1,
+    "filename": "local_llm_python.prompt",
+    "filepath": "pdd/local_llm.py",
+    "tags": ["local", "llm", "python"],
+    "interface": {"type": "module", "module": {"functions": [
+      {"name": "get_local_llm_config", "signature": "(cwd: Path | None = None) -> LocalLLMConfig | None", "returns": "Validated immutable endpoint configuration or None"},
+      {"name": "local_llm_environment", "signature": "(config: LocalLLMConfig) -> dict[str, str]", "returns": "Non-secret settings pinned for nested PDD commands"},
+      {"name": "invoke_local_llm", "signature": "(config: LocalLLMConfig, messages: list, *, temperature: float, output_pydantic=None, output_schema=None, use_batch_mode=False, max_output_tokens=None, max_input_tokens=None) -> dict", "returns": "PDD result with local provenance"},
+      {"name": "local_llm_estimate", "signature": "(config: LocalLLMConfig, messages: list, *, command: str, max_output_tokens=None) -> dict", "returns": "Provider-free approximate estimate"}
+    ]}}
+  },
+  {
     "reason": "Computes story-regression metrics over the executable `-m story` suite and emits a machine-readable evidence artifact (#1704), reusing the #833 evidence-path conventions without owning them.",
     "description": "Deterministic (no-LLM) emitter that collects the executable @pytest.mark.story regression suite via pytest --collect-only, joins it with story->test traceability (#1699) and gate pass/stale verdicts (#1702), computes story count, story-backed test count, coverage %, and pass-rate with zero-story guards, and writes a schema-versioned JSON artifact under .pdd/evidence/stories/ (latest + per-run snapshot), degrading to status=not_applicable when upstream pieces are absent.",
     "dependencies": [
@@ -55,6 +70,7 @@
       "git_porcelain_python.prompt",
       "routing_policy_python.prompt",
       "codex_subscription_python.prompt",
+      "local_llm_python.prompt",
       "github_guard_python.prompt"
     ],
     "priority": 5,
@@ -9500,7 +9516,8 @@
       "agentic_common_python.prompt",
       "auto_update_python.prompt",
       "track_cost_python.prompt",
-      "cli_branding_python.prompt"
+      "cli_branding_python.prompt",
+      "local_llm_python.prompt"
     ],
     "priority": 5,
     "filename": "core/cli_python.prompt",
@@ -9676,6 +9693,7 @@
     "description": "CloudConfig provides static methods for cloud URL resolution (get_base_url, get_endpoint_url with CLOUD_ENDPOINTS map including submitExample), environment inference (ensure_default_env), JWT auth (get_jwt_token), and cloud-environment detection (is_running_in_cloud, is_cloud_enabled). JWT auth preserves injected/cache/keyring-refresh credentials outside local-only mode, requires explicit GitHub-auth opt-in before device flow, and hard-disables cloud auth under PDD_LOCAL_ONLY. Module-level get_cloud_timeout() reads PDD_CLOUD_TIMEOUT, and get_cloud_request_timeout() returns the requests timeout tuple used by cloud POST calls. Used by sync/fix auto-submit so PDD_CLOUD_URL is honored across staging/prod/local (#859).",
     "dependencies": [
       "auth_service_python.prompt",
+      "local_llm_python.prompt",
       "github_guard_python.prompt"
     ],
     "priority": 5,
@@ -9870,6 +9888,7 @@
     "dependencies": [
       "path_resolution_python.prompt",
       "server/token_counter_python.prompt",
+      "local_llm_python.prompt",
       "github_guard_python.prompt"
     ],
     "priority": 236,

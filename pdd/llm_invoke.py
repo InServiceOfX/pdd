@@ -7,11 +7,12 @@ import getpass
 import os
 
 from .github_guard import github_auth_opted_in, local_only_enabled
+from .local_llm import get_local_llm_config, invoke_local_llm, local_llm_estimate
 
 # LiteLLM normally refreshes its model-cost catalog from GitHub during import.
 # Local-only mode must close that import-time network path as well.
-if local_only_enabled():
-    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")
+if local_only_enabled() or get_local_llm_config() is not None:
+    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "true"
 
 import pandas as pd
 import litellm
@@ -4836,6 +4837,39 @@ def llm_invoke(
         raise RuntimeError(
             "PDD_COMMAND_MAX_COST_USD does not permit batch provider requests"
         )
+
+    # An explicit endpoint is exclusive, even if a caller requests cloud or
+    # task routing. Resolve before any model catalog/credentials/fallback path.
+    local_config = get_local_llm_config()
+    if local_config is not None:
+        if estimate_mode:
+            estimate_payload = local_llm_estimate(
+                local_config, formatted_messages, command=_current_estimate_command_name(),
+                max_output_tokens=command_output_cap,
+            )
+            _accumulate_estimate_on_click_context(estimate_payload)
+            raise EstimateOnlyResult(estimate_payload)
+        local_result = invoke_local_llm(
+            local_config, formatted_messages, temperature=temperature,
+            output_pydantic=output_pydantic, output_schema=output_schema,
+            use_batch_mode=use_batch_mode, max_output_tokens=command_output_cap,
+            max_input_tokens=command_input_cap,
+        )
+        local_result["grounding"] = build_grounding_metadata(
+            mode="unavailable",
+            grounding_overrides=resolve_grounding_overrides_for_invoke(
+                grounding_overrides, source_prompt),
+            reviewed=reviewed_from_click_ctx(),
+        )
+        import click as local_click
+        local_ctx = local_click.get_current_context(silent=True)
+        if local_ctx is not None and isinstance(local_ctx.obj, dict):
+            local_ctx.obj.update(
+                resolved_model=local_result["model_name"],
+                attempted_models=local_result["attempted_models"],
+                model_selection_outcome="local_endpoint",
+            )
+        return local_result
 
     # --- Per-task config router + multi-shot (issue #1584) ---
     # Gated entirely behind PDD_ENABLE_TASK_ROUTING=1. When unset, shots/verifier/

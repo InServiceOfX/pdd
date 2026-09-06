@@ -72,12 +72,17 @@ For the ordinary-language human surface, the four standalone/monorepo adoption
 scenarios, and a precise explanation of versioned prompts, tests, and
 agent-drafted stories, see [docs/intent.md](docs/intent.md).
 
-To run the agentic workflows with no GitHub issue, no `gh`, and no network —
+To run the agentic workflows with no GitHub issue or `gh` —
 `pdd work new` opens a local work item, `pdd bug local:1` runs against it, and
 `pdd work comment 1 --text "..."` steers the run mid-flight — see
 [docs/local_work_items.md](docs/local_work_items.md).
 The process-wide GitHub/authentication boundary is documented in
 [docs/github_auth_policy.md](docs/github_auth_policy.md).
+
+For prompt processing on your own **llama.cpp server without an API key**,
+configure `.pdd/local_llm.json`; see [local LLM setup](docs/local_llm.md).
+This pins nested model calls to that endpoint and prevents cloud fallback.
+Local issues alone do not make an external coding-agent provider offline.
 
 For pre-merge prompt and user-story quality (vague terms, vocabulary, optional LLM review), see [docs/prompt_lint.md](docs/prompt_lint.md).
 

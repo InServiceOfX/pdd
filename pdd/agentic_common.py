@@ -45,6 +45,7 @@ from rich.console import Console
 
 from pdd import local_work_items
 from pdd.github_guard import instruction_is_local, localize_agent_instruction
+from pdd.local_llm import get_local_llm_config
 from pdd.local_work_items import is_local_owner, local_only_enabled
 from pdd.routing_policy import (
     canonicalize_claude_cli_model,
@@ -5402,6 +5403,15 @@ def run_agentic_task(
         Four-value unpacking remains supported for legacy callers; structured
         consumers can read ``result.usage`` or ``result[4]``.
     """
+    if get_local_llm_config(cwd) is not None:
+        return AgenticTaskResult(
+            False,
+            "Local llama.cpp endpoint is configured. This workflow requires a "
+            "tool-capable coding-agent harness, not just an HTTP chat server. "
+            "Use prompt workflows such as pdd generate or pdd test --manual. "
+            "No external agent or paid-provider fallback was started.",
+            0.0, "llama.cpp",
+        )
     provider_failure_sink = _consume_provider_failure_sink()
     normalized_claude_policy = (
         validate_claude_policy(
@@ -6153,6 +6163,14 @@ def run_exact_agentic_task(
     effective model is recovered from provider session evidence. Unsupported
     selector combinations raise before a provider subprocess starts.
     """
+    if get_local_llm_config(cwd) is not None:
+        return AgenticTaskResult(
+            False,
+            "Local llama.cpp endpoint is configured; exact external-agent "
+            "routing is disabled. Use pdd generate or pdd test --manual. "
+            "An HTTP chat server is not a tool-capable coding-agent harness.",
+            0.0, "llama.cpp",
+        )
     normalized_provider = provider.strip().lower()
     normalized_model = model.strip()
     normalized_effort = (effort or "").strip().lower() or None
@@ -9512,8 +9530,8 @@ def drain_issue_steers(
                 state["steer_generation"] = state.get("steer_generation", 0) + 1
                 return steers
 
-    # 2) GitHub poll (best-effort)
-    if not _find_cli_binary("gh"):
+    # 2) Local-store or GitHub poll (best-effort). A local cursor never needs gh.
+    if not is_local_owner(repo_owner) and not _find_cli_binary("gh"):
         return []
 
     if not _steer_cursor_initialized(state):

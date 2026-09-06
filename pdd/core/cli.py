@@ -17,6 +17,7 @@ except ImportError:
     DEFAULT_TIME = 0.25
     __version__ = "unknown"
 from ..auto_update import auto_update
+from ..local_llm import get_local_llm_config, local_llm_environment
 from ..cli_branding import PDD_FULL_TAGLINE, PDD_POSITIONING
 from ..construct_paths import list_available_contexts
 from ..install_completion import get_local_pdd_path
@@ -819,6 +820,20 @@ def cli(
     # ctx.obj["local"], not on the env var, so an env-only force-local
     # previously still attempted PDD-cloud auth — including an interactive
     # GitHub device-flow hang outside CI. Truthy set matches sync_main.
+    local_llm_config = get_local_llm_config()
+    if local_llm_config is not None:
+        local_env = local_llm_environment(local_llm_config)
+        local_env_originals = {key: os.environ.get(key) for key in local_env}
+
+        def _restore_local_llm_env():
+            for key, previous in local_env_originals.items():
+                if previous is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = previous
+
+        ctx.call_on_close(_restore_local_llm_env)
+        os.environ.update(local_env)
     env_force_local = os.environ.get(
         "PDD_FORCE_LOCAL", ""
     ).strip().lower() in {"1", "true", "yes", "on"}
@@ -939,7 +954,8 @@ def cli(
 
     # Perform auto-update check unless disabled
 
-    if not json_mode and not estimate_mode and os.getenv("PDD_AUTO_UPDATE", "true").lower() != "false":
+    if (local_llm_config is None and not json_mode and not estimate_mode
+            and os.getenv("PDD_AUTO_UPDATE", "true").lower() != "false"):
         try:
             if not quiet:
                 console.print("[info]Checking for updates...[/info]")

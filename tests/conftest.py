@@ -36,9 +36,25 @@ atexit.register(shutil.rmtree, _PYTEST_FAKE_HOME, ignore_errors=True)
 os.environ["HOME"] = _PYTEST_FAKE_HOME
 os.environ["CODEX_HOME"] = os.path.join(_PYTEST_FAKE_HOME, ".codex")
 
+# Machine-local routing must not redirect mocked provider tests (or pick up
+# a developer's real endpoint). Local endpoint tests explicitly opt back in.
+os.environ["PDD_LOCAL_LLM_ENABLED"] = "0"
+
 import pytest
 from dotenv import load_dotenv
 from pdd.llm_invoke import InsufficientCreditsError
+
+
+@pytest.fixture(autouse=True)
+def _isolate_machine_local_llm_project_settings(monkeypatch, request):
+    """Even tests clearing all env vars must not use the developer's endpoint.
+
+    The dedicated configuration/HTTP tests use their own temporary projects.
+    Other provider tests frequently patch.dict(os.environ, clear=True), which
+    removes the startup opt-out above; suppress disk discovery for those tests.
+    """
+    if request.node.path.name != "test_local_llm.py":
+        monkeypatch.setattr("pdd.local_llm._project_settings", lambda _cwd: None)
 
 
 CANDIDATE_ONLY_SOURCE_MODE = "candidate-tree-v1"

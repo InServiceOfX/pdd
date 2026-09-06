@@ -1,6 +1,12 @@
 % You are an expert Python engineer. Create a centralized cloud configuration module for PDD CLI commands.
 
 <pdd-dependency>auth_service_python.prompt</pdd-dependency>
+<pdd-dependency>local_llm_python.prompt</pdd-dependency>
+
+An explicitly configured local LLM endpoint is a hard cloud boundary:
+is_cloud_enabled returns False and get_jwt_token returns None before reading
+injected/cached credentials or attempting authentication. Resolve via the
+shared local_llm configuration; invalid settings fail closed.
 
 <include>context/python_preamble.prompt</include>
 

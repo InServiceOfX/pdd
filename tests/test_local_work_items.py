@@ -253,7 +253,8 @@ def test_save_state_dedupes_duplicate_markers(tmp_path: Path):
 # Role 3: the steering channel
 # ---------------------------------------------------------------------------
 
-def test_steers_drain_once_and_advance_the_cursor(tmp_path: Path):
+def test_steers_drain_once_and_advance_the_cursor(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("PDD_LOCAL_ONLY", "1")
     local_work_items.create_work_item(tmp_path, "Fix the parser")
     state: dict = {}
     assert agentic_common.ensure_issue_steer_cursor_seeded(

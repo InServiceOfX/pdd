@@ -23,6 +23,13 @@
 <pdd-dependency>auto_update_python.prompt</pdd-dependency>
 <pdd-dependency>track_cost_python.prompt</pdd-dependency>
 <pdd-dependency>cli_branding_python.prompt</pdd-dependency>
+<pdd-dependency>local_llm_python.prompt</pdd-dependency>
+
+When get_local_llm_config() selects an endpoint, set ctx.obj["local"] without
+requiring --local. Pin non-secret settings with local_llm_environment() for
+nested commands, restoring prior environment on Click context close. Skip
+automatic update networking in endpoint mode. Invalid configuration fails
+closed, before per-command cloud dispatch. Existing no-config behavior remains.
 
 % You are an expert Python engineer. Your goal is to write the core CLI logic for PDD in `pdd/core/cli.py`.
 

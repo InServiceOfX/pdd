@@ -14,6 +14,7 @@ from typing import Optional
 from rich.console import Console
 
 from ..github_guard import github_auth_opted_in, local_only_enabled
+from ..local_llm import get_local_llm_config
 from ..get_jwt_token import (
     AuthError,
     NetworkError,
@@ -201,7 +202,7 @@ class CloudConfig:
         # Local-only is a hard process boundary, including cached/injected
         # credentials. It means no GitHub-backed cloud traffic, not merely
         # "do not show an OAuth prompt".
-        if local_only_enabled():
+        if local_only_enabled() or get_local_llm_config() is not None:
             return None
 
         # Check for pre-injected token (testing/CI)
@@ -333,7 +334,8 @@ class CloudConfig:
            b. Both FIREBASE_API_KEY and GITHUB_CLIENT_ID are set (for device flow auth)
         """
         # Respect --local flag (sets PDD_FORCE_LOCAL=1)
-        if os.environ.get("PDD_FORCE_LOCAL") or local_only_enabled():
+        if (os.environ.get("PDD_FORCE_LOCAL") or local_only_enabled()
+                or get_local_llm_config() is not None):
             return False
 
         # CRITICAL: Never enable cloud mode when already running in cloud

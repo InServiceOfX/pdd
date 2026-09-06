@@ -63,6 +63,18 @@
 </pdd-interface>
 
 <pdd-dependency>llm_invoke_python.prompt</pdd-dependency>
+<pdd-dependency>local_llm_python.prompt</pdd-dependency>
+
+Local endpoint safety: run_agentic_task and run_exact_agentic_task must fail
+before discovering credentials or launching provider CLIs when local_llm
+configuration is selected for cwd. Return an unsuccessful AgenticTaskResult
+with zero API cost, provider llama.cpp and guidance that an HTTP chat server
+is not a filesystem/tool-agent harness. Recommend prompt workflows (generate,
+test --manual); never silently fall back to Claude/Codex/Gemini/OpenCode.
+
+For local work items, drain_issue_steers must poll the local store even when gh
+is absent or PDD_LOCAL_ONLY=1. Check is_local_owner before requiring a gh binary;
+the shared comment fetcher already routes local reads without networking.
 <pdd-dependency>auth_service_python.prompt</pdd-dependency>
 <pdd-dependency>_keyring_timeout_python.prompt</pdd-dependency>
 <pdd-dependency>git_porcelain_python.prompt</pdd-dependency>

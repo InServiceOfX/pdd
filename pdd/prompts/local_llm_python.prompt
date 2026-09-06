@@ -1,0 +1,74 @@
+<pdd-reason>Route prompt processing exclusively to an explicitly configured llama.cpp/OpenAI-compatible server without paid-provider keys, GitHub authentication or cloud fallback.</pdd-reason>
+<pdd-interface>
+{"type":"module","module":{"functions":[
+{"name":"get_local_llm_config","signature":"(cwd: Path | None = None) -> LocalLLMConfig | None","returns":"Validated immutable endpoint configuration or None"},
+{"name":"local_llm_environment","signature":"(config: LocalLLMConfig) -> dict[str, str]","returns":"Non-secret settings pinned for nested PDD commands"},
+{"name":"invoke_local_llm","signature":"(config: LocalLLMConfig, messages: list, *, temperature: float, output_pydantic=None, output_schema=None, use_batch_mode=False, max_output_tokens=None, max_input_tokens=None) -> dict","returns":"PDD result, model, zero API cost, separate thinking, usage and endpoint provenance"},
+{"name":"local_llm_estimate","signature":"(config: LocalLLMConfig, messages: list, *, command: str, max_output_tokens=None) -> dict","returns":"Provider-free approximate estimate with zero API charges"}
+]}}</pdd-interface>
+
+Implement pdd/local_llm.py. Frozen LocalLLMConfig includes base_url, model
+(default auto), max_tokens (8192), timeout (600 seconds), optional temperature,
+optional context_window, optional enable_thinking and api_key_env (default
+PDD_LOCAL_LLM_API_KEY). Configuration stores only an environment-variable
+name, never a literal key. No API key or placeholder is required.
+
+Discover nearest project boundary (.pddrc or .git) walking from cwd. Read
+.pdd/local_llm.json ahead of the top-level .pddrc local_llm mapping, and use
+~/.pdd/local_llm.json only if the project specifies neither. An explicit
+PDD_LOCAL_LLM_CONFIG file overrides discovery. PDD_LOCAL_LLM_BASE_URL,
+PDD_LOCAL_LLM_MODEL, PDD_LOCAL_LLM_MAX_TOKENS and PDD_LOCAL_LLM_TIMEOUT override
+file fields. Serialized PDD_LOCAL_LLM_CONFIG_JSON pins inherited non-secret
+settings ahead of file discovery; local_llm_environment returns that mapping
+along with PDD_LOCAL_LLM_ENABLED=1 and PDD_FORCE_LOCAL=1 for child commands.
+PDD_LOCAL_LLM_ENABLED=0 explicitly disables this mode (useful for
+mocked-provider tests); a configured empty/malformed endpoint fails closed.
+Accept HTTP(S) local/LAN addresses including IPv6 and DNS. Append /v1 to a bare
+origin; preserve supplied API prefixes. Reject userinfo, queries, fragments and
+wildcard bind addresses with an actionable connect-address message.
+
+Use shared OpenAI-compatible /models and /chat/completions HTTP interfaces,
+independent of native Metal vs Linux CUDA/container launch details. If model is
+auto, require exactly one advertised model and use its exact id. Do not query
+model catalogs or fetch weights. Reject redirects. Disable ambient proxies and
+netrc credentials. Read only the configured dedicated key variable, if present.
+
+Output uses llm_invoke's result contract: Pydantic requests return a validated
+model instance, raw JSON-schema requests return a validated JSON value, normal
+requests return final text. Separate reasoning_content from content. Batch
+items execute sequentially on the same server and aggregate local token usage.
+HTTP/model/schema/empty/truncated-output errors fail with endpoint guidance,
+never copied response bodies or secrets. A thinking-only response is incomplete.
+Require finish_reason=stop for a completed non-streaming answer. JSON-schema
+validation MUST NOT retrieve external reference resources over the network.
+Do not execute returned tool calls in this transport.
+
+Estimates make no network calls, including discovery/tokenization. Label the
+UTF-8 serialized-message byte count as a conservative input approximation, not
+a measured tokenizer count. Admission respects configured/command output caps,
+and optional input/context limits using that same conservative bound. API cost
+is zero (hardware/electricity costs are not estimated). Sampling can be explicitly
+configured per local model; otherwise use the caller's temperature. Optional
+enable_thinking maps to chat_template_kwargs.enable_thinking.
+
+<contract_rules>
+R1 (MUST): Resolve configuration from the nearest project, machine-local override or explicit environment without modifying caller settings.
+R2 (MUST NOT): Contact a cloud provider, GitHub, model catalog or credential prompt in local endpoint mode or after an endpoint failure.
+R3 (MUST): Send requests only to the configured validated endpoint with the exact configured/discovered model and bounded output/timeout.
+R4 (MUST NOT): Forward ambient paid-provider credentials, proxy settings, netrc auth or follow HTTP redirects.
+R5 (MUST): Support plain text, validated Pydantic/JSON schema output and sequential batches while separating reasoning from final answers.
+R6 (MUST NOT): Return empty, malformed, tool-only or token-truncated responses as final output.
+R7 (MUST): Keep estimates network-free and mark approximate token counts and zero API charges explicitly.
+R8 (MUST): Behave identically for macOS/native and Linux/container HTTP servers, including loopback and explicit LAN addresses.
+</contract_rules>
+
+<coverage>
+R1: tests/test_local_llm.py::test_project_discovery_overrides_and_child_environment
+R2: tests/test_local_llm.py::test_llm_invoke_exclusive_over_cloud_catalog_keys_and_router
+R3: tests/test_local_llm.py::test_optional_dedicated_key_and_output_caps
+R4: tests/test_local_llm.py::test_real_http_no_ambient_auth_or_proxy; tests/test_local_llm.py::test_error_or_redirect_no_fallback
+R5: tests/test_local_llm.py::test_validated_structured_output_and_batch
+R6: tests/test_local_llm.py::test_incomplete_output_rejected; tests/test_local_llm.py::test_invalid_schema_never_echoes_answer
+R7: tests/test_local_llm.py::test_llm_invoke_offline_estimate
+R8: tests/test_local_llm.py::test_portable_addresses; tests/story_regression/test_story_process_prompts_with_local_llama_cpp.py::test_key_free_prompt_and_persistent_local_request
+</coverage>

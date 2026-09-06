@@ -16,6 +16,7 @@
 </pdd-interface>
 
 <pdd-dependency>path_resolution_python.prompt</pdd-dependency>
+<pdd-dependency>local_llm_python.prompt</pdd-dependency>
 <pdd-dependency>server/token_counter_python.prompt</pdd-dependency>
 
 % You are an expert Python engineer. Your goal is to write a python function, "llm_invoke", that will run a prompt with a given input using the LiteLLM library. The function will also handle fetching and saving missing API keys interactively. The entire code needed for this will be in a single file called llm_invoke.py.
@@ -50,6 +51,7 @@
 </pdd.core.cloud>
 
 % Startup Behavior:
+    - An explicitly configured local_llm endpoint selects the exclusive local transport before cloud/catalog/credential/task-model routing. Reuse normal message formatting and output contracts, command input/output limits and grounding metadata. Report the actual local model and zero API cost. Estimate mode stays network-free. Endpoint errors never fall back to another provider. Also disable LiteLLM's import-time remote cost catalog when local endpoint mode is configured.
     - Load environment variables from a `.env` file located at the project root.
     - Project root detection: use PathResolver.resolve_project_root (profile "pdd_path_then_marker_then_cwd").
       This must ignore PDD_PATH if it points inside the installed package path, then

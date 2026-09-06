@@ -27,7 +27,11 @@ One caveat that survives: `make test` exports `PDD_RUN_REAL_LLM_TESTS=1` and a V
 model, so it bills real provider calls. Plain `pytest` does not.
 
 ## Local, GitHub-Free Workflows
-The workflow runs end to end with no GitHub issue, no `gh`, and no network call.
+Local issue storage needs no GitHub issue, no `gh`, and no network call.
+Model execution is separate: `.pdd/local_llm.json` selects a key-free local
+llama.cpp endpoint for prompt processing. Read [docs/local_llm.md](docs/local_llm.md)
+before configuring it. The endpoint route is exclusive and fails closed; it
+does not itself provide a tool-capable coding-agent harness.
 Prefer these over `gh` in agent-driven work.
 
 `pdd intent plan --text "..."` is the ordinary-language front door. It is read-only:
